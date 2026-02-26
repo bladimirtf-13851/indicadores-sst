@@ -1,0 +1,5 @@
+{
+  "name": "Gestor de Indicadores de Accidentalidad (Res. 0312/2019)",
+  "description": "Aplicación para el registro de accidentes de trabajo y cálculo automático de indicadores de frecuencia, severidad y mortalidad según la normativa colombiana.",
+  "requestFramePermissions": []
+}

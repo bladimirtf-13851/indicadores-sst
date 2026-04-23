@@ -17,7 +17,7 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isSignedIn() && (request.auth.token.email == 'BladimirTF@gmail.com' || request.auth.token.email == 'bladimirtf@gmail.com' || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
+      return isSignedIn() && (request.auth.token.email == 'BladimirTF@gmail.com' || request.auth.token.email == 'bladimirtf@gmail.com' || request.auth.token.email == 'bladimir.torres@edu-flex.com' || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
     }
 
     function getCompanyId() {

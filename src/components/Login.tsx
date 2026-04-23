@@ -28,8 +28,12 @@ export default function Login() {
         setError('Este correo ya está registrado. Intente iniciar sesión.');
       } else if (err.code === 'auth/weak-password') {
         setError('La contraseña es muy débil (mínimo 6 caracteres).');
+      } else if (err.code === 'auth/operation-not-allowed') {
+        setError('El método de registro con correo no está habilitado en la consola de Firebase. Por favor actívalo en Authentication > Sign-in method.');
+      } else if (err.code === 'auth/invalid-email') {
+        setError('El formato del correo electrónico no es válido.');
       } else {
-        setError('Credenciales inválidas o error de conexión.');
+        setError('Error: ' + (err.message || 'Error de conexión. Verifica que el método de correo/contraseña esté habilitado en Firebase.'));
       }
       console.error(err);
     } finally {

@@ -96,7 +96,7 @@ export default function App() {
           </button>
           
           {/* Temporary Bootstrap Link for first user */}
-          {(user?.email === 'BladimirTF@gmail.com' || user?.email === 'bladimirtf@gmail.com') && (
+          {(user?.email === 'BladimirTF@gmail.com' || user?.email === 'bladimirtf@gmail.com' || user?.email === 'bladimir.torres@edu-flex.com') && (
             <div className="pt-4 border-t border-gray-100">
               <p className="text-[10px] text-gray-400 font-bold uppercase mb-2">Acceso de Administrador Maestro</p>
               <button

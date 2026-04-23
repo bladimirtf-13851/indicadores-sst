@@ -96,15 +96,24 @@ export default function App() {
           </button>
           
           {/* Temporary Bootstrap Link for first user */}
-          <button
-            onClick={async () => {
-              await firebaseService.createUserProfile(user.uid, user.email!, 'admin');
-              window.location.reload();
-            }}
-            className="text-[10px] text-gray-300 hover:text-emerald-500 font-bold transition-colors"
-          >
-            [DEVELOPER] Convertir en Administrador Sistema
-          </button>
+          {(user?.email === 'BladimirTF@gmail.com' || user?.email === 'bladimirtf@gmail.com') && (
+            <div className="pt-4 border-t border-gray-100">
+              <p className="text-[10px] text-gray-400 font-bold uppercase mb-2">Acceso de Administrador Maestro</p>
+              <button
+                onClick={async () => {
+                  try {
+                    await firebaseService.createUserProfile(user.uid, user.email!, 'admin');
+                    window.location.reload();
+                  } catch (err) {
+                    alert("Error al crear perfil: " + (err instanceof Error ? err.message : "Error desconocido"));
+                  }
+                }}
+                className="w-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100 font-bold py-3 rounded-2xl transition-colors border border-emerald-100"
+              >
+                Activar Perfil Administrador Global
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );

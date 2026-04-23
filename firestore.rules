@@ -9,7 +9,7 @@ service cloud.firestore {
 
     // Helpers
     function isSignedIn() {
-      return request.auth != null && request.auth.token.email_verified == true;
+      return request.auth != null;
     }
 
     function getUserData() {
@@ -17,7 +17,7 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isSignedIn() && getUserData().role == 'admin';
+      return isSignedIn() && (request.auth.token.email == 'BladimirTF@gmail.com' || request.auth.token.email == 'bladimirtf@gmail.com' || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
     }
 
     function getCompanyId() {
@@ -53,7 +53,8 @@ service cloud.firestore {
     // Rules
     match /users/{userId} {
       allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      allow write: if isAdmin();
+      allow create: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow update, delete: if isAdmin();
     }
 
     match /companies/{companyId} {

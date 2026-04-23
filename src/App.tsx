@@ -169,7 +169,8 @@ export default function App() {
 
   const yearlyIndicators = currentData ? calculateYearlyIndicators(
     currentData.records || [],
-    currentData.monthlyEmployeeCount || {}
+    currentData.monthlyEmployeeCount || {},
+    currentData.monthlyProgrammedDays || {}
   ) : [];
 
   const currentMonth = format(new Date(), 'yyyy-MM');

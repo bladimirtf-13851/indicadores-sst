@@ -67,7 +67,8 @@ export const calculateIndicators = (
 
 export const calculateYearlyIndicators = (
   records: EventRecord[],
-  monthlyEmployeeCount: Record<string, number>
+  monthlyEmployeeCount: Record<string, number>,
+  monthlyProgrammedDays: Record<string, number>
 ): YearlyIndicator[] => {
   const years = Array.from(new Set(records.map(r => r.date.split("-")[0]))).sort();
   if (years.length === 0) {
@@ -78,6 +79,7 @@ export const calculateYearlyIndicators = (
   return years.map(year => {
     const yearRecords = records.filter(r => r.date.startsWith(year));
     const yearAccidents = yearRecords.filter(r => r.eventType === EventType.ACCIDENTE);
+    const yearAbsenteeism = yearRecords.filter(r => r.eventType === EventType.AUSENTISMO);
     
     // Average employees for the year
     const yearMonths = Object.keys(monthlyEmployeeCount).filter(m => m.startsWith(year));
@@ -85,15 +87,28 @@ export const calculateYearlyIndicators = (
       ? yearMonths.reduce((sum, m) => sum + monthlyEmployeeCount[m], 0) / yearMonths.length
       : 50;
 
+    // Total programmed days for the year
+    const yearPeriodMonths = Object.keys(monthlyProgrammedDays).filter(m => m.startsWith(year));
+    const totalProgrammedDays = yearPeriodMonths.length > 0
+      ? yearPeriodMonths.reduce((sum, m) => sum + monthlyProgrammedDays[m], 0)
+      : (avgEmployees * 30 * (yearPeriodMonths.length || 12));
+
     const accidentCount = yearAccidents.length;
-    const lostDays = yearAccidents.reduce((sum, r) => sum + r.lostDays + r.chargedDays, 0);
+    const lostDaysAccidents = yearAccidents.reduce((sum, r) => sum + r.lostDays + r.chargedDays, 0);
+    const lostDaysAbsenteeism = yearAbsenteeism.reduce((sum, r) => sum + r.lostDays, 0);
     const mortalCount = yearAccidents.filter(r => r.accidentType === AccidentType.MORTAL).length;
+
+    const absenteeismLaboral = yearAbsenteeism.filter(r => r.origin === OriginType.LABORAL);
+    const incidenciaCount = absenteeismLaboral.filter(r => r.isNewCase).length;
 
     return {
       year,
       frecuencia: (accidentCount / avgEmployees) * 100,
-      severidad: (lostDays / avgEmployees) * 100,
+      severidad: (lostDaysAccidents / avgEmployees) * 100,
       mortalidad: accidentCount > 0 ? (mortalCount / accidentCount) * 100 : 0,
+      incidenciaEL: (incidenciaCount / avgEmployees) * 100000,
+      prevalenciaEL: (absenteeismLaboral.length / avgEmployees) * 100000,
+      ausentismoMedica: (lostDaysAbsenteeism / totalProgrammedDays) * 100,
       accidentCount
     };
   });

@@ -50,6 +50,9 @@ export interface YearlyIndicator {
   frecuencia: number;
   severidad: number;
   mortalidad: number;
+  incidenciaEL: number;
+  prevalenciaEL: number;
+  ausentismoMedica: number;
   accidentCount: number;
 }
 

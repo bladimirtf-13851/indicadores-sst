@@ -21,8 +21,19 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'list'>('dashboard');
   const [showEventForm, setShowEventForm] = useState(false);
   const [showCompanyForm, setShowCompanyForm] = useState(false);
-  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(() => {
+    return localStorage.getItem('sst_selected_company');
+  });
   const [showUserModal, setShowUserModal] = useState<Company | null>(null);
+
+  // Persist local UI state
+  useEffect(() => {
+    if (selectedCompanyId) {
+      localStorage.setItem('sst_selected_company', selectedCompanyId);
+    } else {
+      localStorage.removeItem('sst_selected_company');
+    }
+  }, [selectedCompanyId]);
 
   const [companies, setCompanies] = useState<Company[]>([]);
   const [records, setRecords] = useState<EventRecord[]>([]);
@@ -122,32 +133,49 @@ export default function App() {
   const handleSignOut = () => signOut(auth);
 
   const addCompany = async (companyData: Omit<Company, 'id'>) => {
-    await firebaseService.addCompany(companyData);
-    setShowCompanyForm(false);
+    try {
+      await firebaseService.addCompany(companyData);
+      setShowCompanyForm(false);
+    } catch (err) {
+      alert("Error al guardar la empresa en el servidor: " + (err instanceof Error ? err.message : "Error desconocido"));
+    }
   };
 
   const addRecord = async (record: Omit<EventRecord, 'id'>) => {
     const cid = isAdmin ? selectedCompanyId : profile.companyId;
     if (!cid) return;
-    await firebaseService.addRecord({ ...record, companyId: cid });
-    setShowEventForm(false);
+    try {
+      await firebaseService.addRecord({ ...record, companyId: cid });
+      setShowEventForm(false);
+    } catch (err) {
+      alert("Error al guardar el registro: " + (err instanceof Error ? err.message : "Error de permisos"));
+    }
   };
 
   const deleteRecord = async (id: string) => {
-    await firebaseService.deleteRecord(id);
+    if (!confirm("¿Está seguro de eliminar este registro permanentemente?")) return;
+    try {
+      await firebaseService.deleteRecord(id);
+    } catch (err) {
+      alert("No se pudo eliminar el registro: Error de permisos.");
+    }
   };
 
   const updateMonthlyValue = async (key: 'employeeCount' | 'programmedDays', month: string, value: number) => {
     const cid = isAdmin ? selectedCompanyId : profile.companyId;
     if (!cid) return;
 
-    const currentConfigsForMonth = {
-      employeeCount: monthlyConfig.monthlyEmployeeCount[month] || 0,
-      programmedDays: monthlyConfig.monthlyProgrammedDays[month] || 0
-    };
+    try {
+      const currentConfigsForMonth = {
+        employeeCount: monthlyConfig.monthlyEmployeeCount[month] || 0,
+        programmedDays: monthlyConfig.monthlyProgrammedDays[month] || 0
+      };
 
-    const updatedValue = { ...currentConfigsForMonth, [key]: value };
-    await firebaseService.updateConfig(cid, month, updatedValue.employeeCount, updatedValue.programmedDays);
+      const updatedValue = { ...currentConfigsForMonth, [key]: value };
+      await firebaseService.updateConfig(cid, month, updatedValue.employeeCount, updatedValue.programmedDays);
+    } catch (err) {
+      console.error("Error updating config:", err);
+    }
   };
 
   // Calculations

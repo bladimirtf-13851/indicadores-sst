@@ -1,0 +1,78 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helpers
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && getUserData().role == 'admin';
+    }
+
+    function getCompanyId() {
+      return getUserData().companyId;
+    }
+
+    function isCompanyUser(companyId) {
+      return isSignedIn() && getUserData().role == 'company' && getCompanyId() == companyId;
+    }
+
+    function isValidId(id) {
+       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Entity Validations
+    function isValidCompany(data) {
+      return data.keys().hasAll(['name', 'nit', 'email']) &&
+             data.name is string && data.name.size() <= 200 &&
+             data.nit is string && data.nit.size() <= 50 &&
+             data.email is string && data.email.size() <= 200;
+    }
+
+    function isValidRecord(data) {
+      return data.keys().hasAll(['companyId', 'date', 'eventType', 'employeeName']) &&
+             data.companyId is string &&
+             data.date is string &&
+             data.eventType is string &&
+             data.employeeName is string &&
+             (!('lostDays' in data) || data.lostDays >= 0) &&
+             (!('chargedDays' in data) || data.chargedDays >= 0);
+    }
+
+    // Rules
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    match /companies/{companyId} {
+      allow read: if isAdmin() || isCompanyUser(companyId);
+      allow write: if isAdmin();
+    }
+
+    match /records/{recordId} {
+      allow read, list: if isAdmin() || (isSignedIn() && resource.data.companyId == getCompanyId());
+      allow create: if (isAdmin() || (isSignedIn() && request.resource.data.companyId == getCompanyId())) 
+                    && isValidRecord(request.resource.data);
+      allow update: if (isAdmin() || (isSignedIn() && resource.data.companyId == getCompanyId() && request.resource.data.companyId == resource.data.companyId))
+                    && isValidRecord(request.resource.data);
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.companyId == getCompanyId());
+    }
+
+    match /configs/{configId} {
+      allow read, list: if isAdmin() || (isSignedIn() && resource.data.companyId == getCompanyId());
+      allow write: if isAdmin() || (isSignedIn() && request.resource.data.companyId == getCompanyId());
+    }
+  }
+}

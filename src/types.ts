@@ -17,6 +17,7 @@ export enum OriginType {
 
 export interface EventRecord {
   id: string;
+  companyId?: string;
   date: string;
   description: string;
   eventType: EventType;

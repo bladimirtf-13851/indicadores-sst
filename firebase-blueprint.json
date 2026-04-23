@@ -1,0 +1,75 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and role metadata",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "company"] },
+        "companyId": { "type": "string", "description": "Null for admin users" }
+      },
+      "required": ["email", "role"]
+    },
+    "Company": {
+      "title": "Company",
+      "description": "Company basic information",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "nit": { "type": "string" },
+        "email": { "type": "string" }
+      },
+      "required": ["name", "nit", "email"]
+    },
+    "EventRecord": {
+      "title": "Event Record",
+      "description": "Accident, Incident or Absenteeism record",
+      "type": "object",
+      "properties": {
+        "companyId": { "type": "string" },
+        "date": { "type": "string" },
+        "description": { "type": "string" },
+        "eventType": { "type": "string" },
+        "accidentType": { "type": "string" },
+        "origin": { "type": "string" },
+        "lostDays": { "type": "number" },
+        "chargedDays": { "type": "number" },
+        "employeeName": { "type": "string" },
+        "department": { "type": "string" },
+        "isNewCase": { "type": "boolean" }
+      },
+      "required": ["companyId", "date", "eventType", "employeeName"]
+    },
+    "MonthlyConfig": {
+      "title": "Monthly Config",
+      "description": "Base data for indicators per month",
+      "type": "object",
+      "properties": {
+        "companyId": { "type": "string" },
+        "month": { "type": "string" },
+        "employeeCount": { "type": "number" },
+        "programmedDays": { "type": "number" }
+      },
+      "required": ["companyId", "month", "employeeCount", "programmedDays"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "User roles and associations"
+    },
+    "companies/{companyId}": {
+      "schema": "Company",
+      "description": "Company metadata"
+    },
+    "records/{recordId}": {
+      "schema": "EventRecord",
+      "description": "Safety events"
+    },
+    "configs/{configId}": {
+      "schema": "MonthlyConfig",
+      "description": "Monthly employee counts and programmed days"
+    }
+  }
+}

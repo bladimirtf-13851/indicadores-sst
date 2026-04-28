@@ -30,17 +30,28 @@ export const calculateIndicators = (
       .filter(r => r.origin === OriginType.COMUN)
       .reduce((sum, r) => sum + r.lostDays, 0);
 
-    // Res 0312/2019 Formulas
+    // Indicator Formulas according to specification
     const frecuencia = (accidentCount / employeeCount) * 100;
     const severidad = (lostDaysAccidents / employeeCount) * 100;
 
+    // Yearly calculations for mortality (projected or YTD)
     const year = month.split("-")[0];
-    const yearAccidents = records.filter(r => r.eventType === EventType.ACCIDENTE && r.date.startsWith(year));
+    const yearRecords = records.filter(r => r.date.startsWith(year));
+    const yearAccidents = yearRecords.filter(r => r.eventType === EventType.ACCIDENTE);
     const yearMortalCount = yearAccidents.filter(r => r.accidentType === AccidentType.MORTAL).length;
-    const yearTotalAccidents = yearAccidents.length;
-    const mortalidad = yearTotalAccidents > 0 ? (yearMortalCount / yearTotalAccidents) * 100 : 0;
+    
+    // Average employees for the year so far
+    const activeMonthsForYear = Object.keys(monthlyEmployeeCount).filter(m => m.startsWith(year));
+    const avgEmployeesYear = activeMonthsForYear.length > 0
+      ? activeMonthsForYear.reduce((sum, m) => sum + monthlyEmployeeCount[m], 0) / activeMonthsForYear.length
+      : employeeCount;
 
-    const absenteeismLaboral = absenteeism.filter(r => r.origin === OriginType.LABORAL);
+    // Mortalidad: (Mortales / Promedio Trabajadores) * 100,000
+    const mortalidad = (yearMortalCount / avgEmployeesYear) * 100000;
+
+    const absenteeismLaboral = monthRecords.filter(r => r.eventType === EventType.AUSENTISMO && r.origin === OriginType.LABORAL);
+    
+    // Period Z usually refers to the month in this context or the year for yearly indicators
     const prevalenciaEL = (absenteeismLaboral.length / employeeCount) * 100000;
     const incidenciaEL = (absenteeismLaboral.filter(r => r.isNewCase).length / employeeCount) * 100000;
 
@@ -81,17 +92,15 @@ export const calculateYearlyIndicators = (
     const yearAccidents = yearRecords.filter(r => r.eventType === EventType.ACCIDENTE);
     const yearAbsenteeism = yearRecords.filter(r => r.eventType === EventType.AUSENTISMO);
     
-    // Average employees for the year
     const yearMonths = Object.keys(monthlyEmployeeCount).filter(m => m.startsWith(year));
     const avgEmployees = yearMonths.length > 0 
       ? yearMonths.reduce((sum, m) => sum + monthlyEmployeeCount[m], 0) / yearMonths.length
-      : 50;
+      : 1;
 
-    // Total programmed days for the year
     const yearPeriodMonths = Object.keys(monthlyProgrammedDays).filter(m => m.startsWith(year));
     const totalProgrammedDays = yearPeriodMonths.length > 0
       ? yearPeriodMonths.reduce((sum, m) => sum + monthlyProgrammedDays[m], 0)
-      : (avgEmployees * 30 * (yearPeriodMonths.length || 12));
+      : (avgEmployees * 30 * (yearPeriodMonths.length || 12)) || 1;
 
     const accidentCount = yearAccidents.length;
     const lostDaysAccidents = yearAccidents.reduce((sum, r) => sum + r.lostDays + r.chargedDays, 0);
@@ -105,7 +114,7 @@ export const calculateYearlyIndicators = (
       year,
       frecuencia: (accidentCount / avgEmployees) * 100,
       severidad: (lostDaysAccidents / avgEmployees) * 100,
-      mortalidad: accidentCount > 0 ? (mortalCount / accidentCount) * 100 : 0,
+      mortalidad: (mortalCount / avgEmployees) * 100000,
       incidenciaEL: (incidenciaCount / avgEmployees) * 100000,
       prevalenciaEL: (absenteeismLaboral.length / avgEmployees) * 100000,
       ausentismoMedica: (lostDaysAbsenteeism / totalProgrammedDays) * 100,

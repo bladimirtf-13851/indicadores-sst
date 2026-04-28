@@ -102,7 +102,7 @@ export default function Dashboard({ data, yearlyData }: Props) {
             <IndicatorCard 
               title="Frecuencia AT" 
               value={latest.frecuencia} 
-              unit="%" 
+              unit="" 
               icon={Activity} 
               color="emerald" 
               desc="Accidentes por cada 100 trabajadores"
@@ -110,7 +110,7 @@ export default function Dashboard({ data, yearlyData }: Props) {
             <IndicatorCard 
               title="Severidad AT" 
               value={latest.severidad} 
-              unit="%" 
+              unit="" 
               icon={TrendingUp} 
               color="amber" 
               desc="Días perdidos por cada 100 trabajadores"
@@ -118,10 +118,10 @@ export default function Dashboard({ data, yearlyData }: Props) {
             <IndicatorCard 
               title="Mortalidad AT" 
               value={latest.mortalidad} 
-              unit="%" 
+              unit="" 
               icon={AlertTriangle} 
               color="red" 
-              desc="Proporción de accidentes mortales"
+              desc="Accidentes por cada 100.000 trabajadores"
             />
           </div>
         </div>
@@ -183,7 +183,7 @@ export default function Dashboard({ data, yearlyData }: Props) {
               <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 11 }} dy={10} tickFormatter={formatMonth} />
               <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 11 }} />
               <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }} />
-              <Area type="monotone" dataKey="frecuencia" name="Frecuencia (%)" stroke="#10b981" fillOpacity={1} fill="url(#colorFreq)" strokeWidth={3} />
+              <Area type="monotone" dataKey="frecuencia" name="Frecuencia" stroke="#10b981" fillOpacity={1} fill="url(#colorFreq)" strokeWidth={3} />
             </AreaChart>
           </ChartContainer>
 
@@ -200,7 +200,7 @@ export default function Dashboard({ data, yearlyData }: Props) {
               <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 11 }} dy={10} tickFormatter={formatMonth} />
               <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 11 }} />
               <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }} />
-              <Area type="monotone" dataKey="severidad" name="Severidad (%)" stroke="#f59e0b" fillOpacity={1} fill="url(#colorSev)" strokeWidth={3} />
+              <Area type="monotone" dataKey="severidad" name="Severidad" stroke="#f59e0b" fillOpacity={1} fill="url(#colorSev)" strokeWidth={3} />
             </AreaChart>
           </ChartContainer>
 
@@ -330,16 +330,16 @@ export default function Dashboard({ data, yearlyData }: Props) {
                   <div className="grid grid-cols-2 gap-4">
                     <div className={selectedIndicator === 'frecuencia' ? 'ring-2 ring-emerald-50 ring-offset-2 rounded-xl p-1' : ''}>
                       <p className="text-[10px] font-bold text-gray-400 uppercase">Frecuencia</p>
-                      <p className="text-lg font-bold text-emerald-600">{year.frecuencia.toFixed(2)}%</p>
+                      <p className="text-lg font-bold text-emerald-600">{year.frecuencia.toFixed(2)}</p>
                     </div>
                     <div className={selectedIndicator === 'severidad' ? 'ring-2 ring-amber-50 ring-offset-2 rounded-xl p-1' : ''}>
                       <p className="text-[10px] font-bold text-gray-400 uppercase">Severidad</p>
-                      <p className="text-lg font-bold text-amber-600">{year.severidad.toFixed(2)}%</p>
+                      <p className="text-lg font-bold text-amber-600">{year.severidad.toFixed(2)}</p>
                     </div>
                     {selectedIndicator === 'mortalidad' && (
                       <div className="col-span-2 mt-2 ring-2 ring-red-50 ring-offset-2 rounded-xl p-1">
                         <p className="text-[10px] font-bold text-gray-400 uppercase">Mortalidad</p>
-                        <p className="text-lg font-bold text-red-600">{year.mortalidad.toFixed(2)}%</p>
+                        <p className="text-lg font-bold text-red-600">{year.mortalidad.toFixed(2)}</p>
                       </div>
                     )}
                     {selectedIndicator === 'incidenciaEL' && (
@@ -391,7 +391,10 @@ export default function Dashboard({ data, yearlyData }: Props) {
                   <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 11 }} />
                   <Tooltip 
                     contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
-                    formatter={(value: number) => [`${value.toFixed(2)}%`, activeIndicator.label]}
+                    formatter={(value: number) => {
+                      const isPercentage = ['ausentismoMedica', 'ausentismoComun'].includes(selectedIndicator);
+                      return [`${value.toFixed(2)}${isPercentage ? '%' : ''}`, activeIndicator.label];
+                    }}
                   />
                   <Legend verticalAlign="top" height={36} />
                   <Line 

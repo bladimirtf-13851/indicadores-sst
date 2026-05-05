@@ -19,16 +19,67 @@ export interface EventRecord {
   id: string;
   companyId?: string;
   date: string;
+  time?: string;
   description: string;
   eventType: EventType;
-  accidentType?: AccidentType; // Only for ACCIDENTE
-  origin?: OriginType; // For AUSENTISMO
+  accidentType?: AccidentType;
+  origin?: OriginType;
   lostDays: number;
-  chargedDays: number; // For severity calculation
+  chargedDays: number;
   employeeName: string;
+  idNumber?: string;
+  position?: string;
+  seniority?: string;
+  employmentType?: string;
+  workdayType?: string;
+  location?: string;
+  locationOther?: string;
+  accidentAgent?: string[];
+  accidentAgentOther?: string;
+  injuryType?: string[];
+  injuryTypeOther?: string;
+  bodyPart?: string[];
+  mechanism?: string[];
+  mechanismOther?: string;
   department: string;
-  isNewCase?: boolean; // For absenteeism incidence
+  isNewCase?: boolean;
+  incapacityStartDate?: string;
+  incapacityEndDate?: string;
+  potentialCauses?: string;
+  correctiveActions?: string;
 }
+
+export const FORM_OPTIONS = {
+  employmentTypes: ['Planta / Contrato Directo', 'Misión / Temporal', 'Subcontratista', 'Independiente / Prestación', 'Estudiante / Pasante', 'Otro'],
+  workdayTypes: ['Jornada Ordinaria', 'Tiempo Extra', 'Turno de Descanso', 'Otras'],
+  locations: [
+    'Almacenes o depósitos', 'Áreas de producción', 'Áreas recreativas o deportivas', 
+    'Áreas fuera de la empresa', 'Corredores o pasillos', 'Escaleras', 
+    'Parqueaderos o áreas de circulación vehicular', 'Oficinas', 'Otras áreas comunes', 'Otro'
+  ],
+  accidentAgents: [
+    'Máquinas y/o equipos', 'Medios de transporte', 'Aparatos', 
+    'Herramientas, implementos o utensilios', 'Materiales o sustancias', 
+    'Ambiente de trabajo', 'Animales'
+  ],
+  injuryTypes: [
+    'Fractura', 'Luxación', 'Torcidura', 'Esguince', 'Desgarro muscular', 
+    'Hernia o laceración de músculo o tendón', 'Sin herida', 'Conmoción o trauma interno', 
+    'Amputación o enucleación', 'Herida', 'Trauma superficial', 'Golpe o contusión', 
+    'Quemadura', 'Envenenamiento o intoxicación', 'Efecto del clima / ambiente', 
+    'Asfixia', 'Efecto de la electricidad', 'Efecto de radiación', 'Lesiones múltiples', 'Otro'
+  ],
+  bodyParts: [
+    'Cabeza', 'Ojo', 'Cuello', 'Tronco (incluye espalda/columna)', 
+    'Tórax', 'Abdomen', 'Miembros superiores', 'Manos', 
+    'Miembros inferiores', 'Pies', 'Ubicaciones múltiples', 'Lesiones generales'
+  ],
+  mechanisms: [
+    'Caída de personas', 'Caída de objetos', 'Pisadas, choques o golpes', 
+    'Atrapamientos', 'Sobreesfuerzo / falso movimiento', 'Temperatura extrema', 
+    'Contacto con electricidad', 'Sustancias nocivas / radiaciones', 'Otro'
+  ]
+};
 
 export interface MonthlyIndicator {
   month: string;

@@ -1,14 +1,15 @@
 import { EventRecord, EventType, AccidentType } from '../types';
-import { Calendar, User, MapPin, Clock, Trash2, ShieldAlert, AlertCircle, Activity } from 'lucide-react';
+import { Calendar, User, MapPin, Clock, Trash2, ShieldAlert, AlertCircle, Activity, Edit2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 interface Props {
   records: EventRecord[];
   onDelete: (id: string) => void;
+  onEdit: (record: EventRecord) => void;
 }
 
-export default function EventList({ records, onDelete }: Props) {
+export default function EventList({ records, onDelete, onEdit }: Props) {
   if (records.length === 0) {
     return (
       <div className="bg-white rounded-3xl p-16 text-center border border-dashed border-gray-200">
@@ -81,6 +82,24 @@ export default function EventList({ records, onDelete }: Props) {
                         {record.origin}
                       </span>
                     </div>
+                  ) : record.eventType === EventType.INCIDENTE ? (
+                    <div className="flex flex-col gap-1 max-w-xs">
+                      {record.potentialCauses && (
+                        <p className="text-[10px] text-gray-500 italic leading-tight">
+                          <span className="font-extrabold text-blue-600 not-italic uppercase pr-1 text-[8px]">Causa:</span> 
+                          {record.potentialCauses}
+                        </p>
+                      )}
+                      {record.correctiveActions && (
+                        <p className="text-[10px] text-gray-500 italic leading-tight">
+                          <span className="font-extrabold text-emerald-600 not-italic uppercase pr-1 text-[8px]">Acción:</span> 
+                          {record.correctiveActions}
+                        </p>
+                      )}
+                      {!record.potentialCauses && !record.correctiveActions && (
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-300">Sin investigación</span>
+                      )}
+                    </div>
                   ) : (
                     <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">-</span>
                   )}
@@ -91,12 +110,22 @@ export default function EventList({ records, onDelete }: Props) {
                   </div>
                 </td>
                 <td className="px-6 py-4">
-                  <button
-                    onClick={() => onDelete(record.id)}
-                    className="p-2 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
-                  >
-                    <Trash2 size={18} />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => onEdit(record)}
+                      className="p-2 text-gray-300 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                      title="Editar registro"
+                    >
+                      <Edit2 size={18} />
+                    </button>
+                    <button
+                      onClick={() => onDelete(record.id)}
+                      className="p-2 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                      title="Eliminar registro"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

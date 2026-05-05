@@ -32,6 +32,8 @@ export default function Login() {
         setError('El método de registro con correo no está habilitado en la consola de Firebase. Por favor actívalo en Authentication > Sign-in method.');
       } else if (err.code === 'auth/invalid-email') {
         setError('El formato del correo electrónico no es válido.');
+      } else if (err.code === 'auth/network-request-failed') {
+        setError('Error de Red: No se pudو conectar con Firebase. Revisa tu conexión a internet o intenta de nuevo en unos segundos.');
       } else {
         setError('Error: ' + (err.message || 'Error de conexión. Verifica que el método de correo/contraseña esté habilitado en Firebase.'));
       }

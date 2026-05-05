@@ -50,6 +50,10 @@ export const firebaseService = {
     return await addDoc(collection(db, 'records'), record);
   },
 
+  async updateRecord(id: string, record: Partial<EventRecord>) {
+    return await updateDoc(doc(db, 'records', id), record);
+  },
+
   async deleteRecord(id: string) {
     return await deleteDoc(doc(db, 'records', id));
   },

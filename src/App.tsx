@@ -20,6 +20,7 @@ export default function App() {
   const { user, profile, loading, isAdmin } = useAuth();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'list'>('dashboard');
   const [showEventForm, setShowEventForm] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<EventRecord | null>(null);
   const [showCompanyForm, setShowCompanyForm] = useState(false);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(() => {
     return localStorage.getItem('sst_selected_company');
@@ -99,27 +100,36 @@ export default function App() {
           <ShieldAlert size={60} className="text-amber-500 mx-auto" />
           <h2 className="text-2xl font-bold text-gray-900">Configuración Pendiente</h2>
           <p className="text-gray-500 text-sm">Tu cuenta no tiene un perfil asignado o está pendiente de aprobación por el administrador.</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="w-full bg-white text-gray-900 border border-gray-200 font-bold py-3 rounded-2xl flex items-center justify-center gap-2 hover:bg-gray-50 transition-colors"
+          >
+            <RefreshCw size={18} />
+            Reintentar Carga
+          </button>
+          
           <button 
             onClick={() => signOut(auth)}
-            className="w-full bg-gray-900 text-white font-bold py-4 rounded-2xl"
+            className="w-full text-gray-400 font-bold py-2 text-xs hover:text-red-500 transition-colors"
           >
             Cerrar Sesión
           </button>
           
           {/* Temporary Bootstrap Link for first user */}
-          {(user?.email === 'BladimirTF@gmail.com' || user?.email === 'bladimirtf@gmail.com' || user?.email === 'bladimir.torres@edu-flex.com') && (
-            <div className="pt-4 border-t border-gray-100">
-              <p className="text-[10px] text-gray-400 font-bold uppercase mb-2">Acceso de Administrador Maestro</p>
+          {(user?.email?.toLowerCase() === 'bladimirtf@gmail.com' || user?.email?.toLowerCase() === 'bladimir.torres@edu-flex.com') && (
+            <div className="pt-6 border-t border-gray-100 mt-4">
+              <p className="text-[10px] text-emerald-600 font-black uppercase mb-3 tracking-widest">Acceso de Administrador Maestro</p>
               <button
                 onClick={async () => {
                   try {
                     await firebaseService.createUserProfile(user.uid, user.email!, 'admin');
+                    alert("¡Perfil de Administrador Global Activado!");
                     window.location.reload();
                   } catch (err) {
                     alert("Error al crear perfil: " + (err instanceof Error ? err.message : "Error desconocido"));
                   }
                 }}
-                className="w-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100 font-bold py-3 rounded-2xl transition-colors border border-emerald-100"
+                className="w-full bg-emerald-600 text-white font-black py-4 rounded-3xl transition-all shadow-xl shadow-emerald-200 hover:bg-emerald-700 active:scale-[0.98]"
               >
                 Activar Perfil Administrador Global
               </button>
@@ -147,9 +157,25 @@ export default function App() {
     try {
       await firebaseService.addRecord({ ...record, companyId: cid });
       setShowEventForm(false);
+      setEditingRecord(null);
     } catch (err) {
       alert("Error al guardar el registro: " + (err instanceof Error ? err.message : "Error de permisos"));
     }
+  };
+
+  const updateRecord = async (id: string, record: Partial<EventRecord>) => {
+    try {
+      await firebaseService.updateRecord(id, record);
+      setShowEventForm(false);
+      setEditingRecord(null);
+    } catch (err) {
+      alert("Error al actualizar el registro: " + (err instanceof Error ? err.message : "Error de permisos"));
+    }
+  };
+
+  const handleEditRecord = (record: EventRecord) => {
+    setEditingRecord(record);
+    setShowEventForm(true);
   };
 
   const deleteRecord = async (id: string) => {
@@ -396,7 +422,11 @@ export default function App() {
             {activeTab === 'dashboard' ? (
               <Dashboard data={indicators} yearlyData={yearlyIndicators} />
             ) : (
-              <EventList records={records} onDelete={deleteRecord} />
+              <EventList 
+                records={records} 
+                onDelete={deleteRecord} 
+                onEdit={handleEditRecord} 
+              />
             )}
           </>
         )}
@@ -406,7 +436,12 @@ export default function App() {
       {showEventForm && (
         <EventForm 
           onAdd={addRecord} 
-          onClose={() => setShowEventForm(false)} 
+          onUpdate={updateRecord}
+          onClose={() => {
+            setShowEventForm(false);
+            setEditingRecord(null);
+          }} 
+          editRecord={editingRecord}
         />
       )}
       

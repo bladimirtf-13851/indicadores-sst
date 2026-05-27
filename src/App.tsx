@@ -14,7 +14,8 @@ import CompanyUserModal from './components/CompanyUserModal';
 import Login from './components/Login';
 import Logo from './components/Logo';
 import { Plus, LayoutDashboard, List, Users, CalendarRange, Building2, ArrowLeft, LogOut, UserCheck, ShieldAlert, RefreshCw } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 export default function App() {
   const { user, profile, loading, isAdmin } = useAuth();
@@ -45,6 +46,7 @@ export default function App() {
 
   const [editingEmployees, setEditingEmployees] = useState(false);
   const [editingDays, setEditingDays] = useState(false);
+  const [configMonth, setConfigMonth] = useState<string>(() => format(new Date(), 'yyyy-MM'));
 
   // Firestore Listeners
   useEffect(() => {
@@ -374,53 +376,82 @@ export default function App() {
               </div>
 
               <div className="flex flex-wrap items-center gap-4">
-                <div className="bg-white px-5 py-3 rounded-3xl border border-gray-100 shadow-sm flex items-center gap-4">
-                  <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
-                    <Users size={20} />
+                {/* Period Selector Card */}
+                <div className="bg-white px-5 py-2.5 rounded-3xl border border-gray-100 shadow-sm flex items-center gap-3">
+                  <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
+                    <CalendarRange size={18} />
                   </div>
                   <div>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Trabajadores</p>
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400">Período a Configurar</p>
+                    <select
+                      value={configMonth}
+                      onChange={(e) => setConfigMonth(e.target.value)}
+                      className="text-xs font-extrabold text-gray-800 bg-transparent outline-none cursor-pointer pr-1"
+                    >
+                      {Array.from({ length: 12 }, (_, i) => {
+                        const mStr = `${new Date().getFullYear()}-${(i + 1).toString().padStart(2, '0')}`;
+                        let label = mStr;
+                        try {
+                          const formatted = format(parseISO(`${mStr}-01`), 'MMMM yyyy', { locale: es });
+                          label = formatted.charAt(0).toUpperCase() + formatted.slice(1);
+                        } catch (e) {}
+                        return (
+                          <option key={mStr} value={mStr}>
+                            {label}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="bg-white px-5 py-2.5 rounded-3xl border border-gray-100 shadow-sm flex items-center gap-4">
+                  <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
+                    <Users size={18} />
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400">Trabajadores</p>
                     {editingEmployees ? (
                       <input
                         type="number"
                         autoFocus
-                        className="text-sm font-extrabold w-16 outline-none border-b-2 border-emerald-500"
-                        value={monthlyConfig.monthlyEmployeeCount[currentMonth] || 0}
-                        onChange={(e) => updateMonthlyValue('employeeCount', currentMonth, parseInt(e.target.value) || 0)}
+                        className="text-xs font-extrabold w-16 outline-none border-b-2 border-emerald-500"
+                        value={monthlyConfig.monthlyEmployeeCount[configMonth] || 0}
+                        onChange={(e) => updateMonthlyValue('employeeCount', configMonth, parseInt(e.target.value) || 0)}
                         onBlur={() => setEditingEmployees(false)}
                       />
                     ) : (
                       <p 
-                        className="text-sm font-extrabold text-gray-900 cursor-pointer hover:text-emerald-600 transition-colors"
+                        className="text-xs font-extrabold text-gray-900 cursor-pointer hover:text-emerald-600 transition-colors"
                         onClick={() => setEditingEmployees(true)}
                       >
-                        {monthlyConfig.monthlyEmployeeCount[currentMonth] || 0}
+                        {monthlyConfig.monthlyEmployeeCount[configMonth] || 0}
                       </p>
                     )}
                   </div>
                 </div>
 
-                <div className="bg-white px-5 py-3 rounded-3xl border border-gray-100 shadow-sm flex items-center gap-4">
+                <div className="bg-white px-5 py-2.5 rounded-3xl border border-gray-100 shadow-sm flex items-center gap-4">
                   <div className="p-2 bg-amber-50 text-amber-600 rounded-xl">
-                    <CalendarRange size={20} />
+                    <CalendarRange size={18} />
                   </div>
                   <div>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Días Programados</p>
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400">Días Programados</p>
                     {editingDays ? (
                       <input
                         type="number"
                         autoFocus
-                        className="text-sm font-extrabold w-20 outline-none border-b-2 border-emerald-500"
-                        value={monthlyConfig.monthlyProgrammedDays[currentMonth] || 0}
-                        onChange={(e) => updateMonthlyValue('programmedDays', currentMonth, parseInt(e.target.value) || 0)}
+                        className="text-xs font-extrabold w-20 outline-none border-b-2 border-emerald-500"
+                        value={monthlyConfig.monthlyProgrammedDays[configMonth] || 0}
+                        onChange={(e) => updateMonthlyValue('programmedDays', configMonth, parseInt(e.target.value) || 0)}
                         onBlur={() => setEditingDays(false)}
                       />
                     ) : (
                       <p 
-                        className="text-sm font-extrabold text-gray-900 cursor-pointer hover:text-emerald-600 transition-colors"
+                        className="text-xs font-extrabold text-gray-900 cursor-pointer hover:text-emerald-600 transition-colors"
                         onClick={() => setEditingDays(true)}
                       >
-                        {monthlyConfig.monthlyProgrammedDays[currentMonth] || 0}
+                        {monthlyConfig.monthlyProgrammedDays[configMonth] || 0}
                       </p>
                     )}
                   </div>

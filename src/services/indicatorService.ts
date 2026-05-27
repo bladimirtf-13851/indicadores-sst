@@ -1,6 +1,32 @@
 import { EventRecord, EventType, AccidentType, MonthlyIndicator, OriginType, YearlyIndicator } from "../types";
 import { format, parseISO, startOfMonth } from "date-fns";
 
+const getResolvedEmployeeCount = (
+  month: string,
+  monthlyEmployeeCount: Record<string, number>
+): number => {
+  let employeeCount = monthlyEmployeeCount[month] || 0;
+  if (employeeCount <= 0) {
+    // Find all months in the record that have employeeCount > 0
+    const configuredMonths = Object.keys(monthlyEmployeeCount)
+      .filter(m => m <= month && monthlyEmployeeCount[m] > 0)
+      .sort((a, b) => b.localeCompare(a)); // Sort descending for past closest
+    
+    if (configuredMonths.length > 0) {
+      employeeCount = monthlyEmployeeCount[configuredMonths[0]];
+    } else {
+      // Check any future configured months
+      const futureMonths = Object.keys(monthlyEmployeeCount)
+        .filter(m => m > month && monthlyEmployeeCount[m] > 0)
+        .sort((a, b) => a.localeCompare(b)); // Sort ascending for closest future
+      if (futureMonths.length > 0) {
+        employeeCount = monthlyEmployeeCount[futureMonths[0]];
+      }
+    }
+  }
+  return employeeCount > 0 ? employeeCount : 1; // Fallback to 1 to avoid division by zero
+};
+
 export const calculateIndicators = (
   records: EventRecord[],
   monthlyEmployeeCount: Record<string, number>,
@@ -16,7 +42,7 @@ export const calculateIndicators = (
 
   return months.map(month => {
     const monthRecords = records.filter(r => r.date.startsWith(month));
-    const employeeCount = monthlyEmployeeCount[month] || 1;
+    const employeeCount = getResolvedEmployeeCount(month, monthlyEmployeeCount);
     const programmedDays = monthlyProgrammedDays[month] || (employeeCount * 30);
 
     const accidents = monthRecords.filter(r => r.eventType === EventType.ACCIDENTE);
@@ -30,8 +56,8 @@ export const calculateIndicators = (
       .filter(r => r.origin === OriginType.COMUN)
       .reduce((sum, r) => sum + r.lostDays, 0);
 
-    // Indicator Formulas according to specification
-    const frecuencia = (accidentCount / employeeCount) * 100;
+    // Indicator Formulas according to specification (Nº de accidentes de trabajo * 100 / numero de trabajadores)
+    const frecuencia = (accidentCount * 100) / employeeCount;
     const severidad = (lostDaysAccidents / employeeCount) * 100;
 
     // Yearly calculations for mortality (projected or YTD)
@@ -92,10 +118,10 @@ export const calculateYearlyIndicators = (
     const yearAccidents = yearRecords.filter(r => r.eventType === EventType.ACCIDENTE);
     const yearAbsenteeism = yearRecords.filter(r => r.eventType === EventType.AUSENTISMO);
     
-    const yearMonths = Object.keys(monthlyEmployeeCount).filter(m => m.startsWith(year));
-    const avgEmployees = yearMonths.length > 0 
-      ? yearMonths.reduce((sum, m) => sum + monthlyEmployeeCount[m], 0) / yearMonths.length
-      : 1;
+    // Compute resolved employees for each of the 12 months of the year, then average them
+    const monthsOfYear = Array.from({ length: 12 }, (_, i) => `${year}-${(i + 1).toString().padStart(2, '0')}`);
+    const resolvedEmployeesList = monthsOfYear.map(m => getResolvedEmployeeCount(m, monthlyEmployeeCount));
+    const avgEmployees = resolvedEmployeesList.reduce((sum, val) => sum + val, 0) / 12;
 
     const yearPeriodMonths = Object.keys(monthlyProgrammedDays).filter(m => m.startsWith(year));
     const totalProgrammedDays = yearPeriodMonths.length > 0
@@ -112,7 +138,7 @@ export const calculateYearlyIndicators = (
 
     return {
       year,
-      frecuencia: (accidentCount / avgEmployees) * 100,
+      frecuencia: (accidentCount * 100) / avgEmployees,
       severidad: (lostDaysAccidents / avgEmployees) * 100,
       mortalidad: (mortalCount / avgEmployees) * 100000,
       incidenciaEL: (incidenciaCount / avgEmployees) * 100000,

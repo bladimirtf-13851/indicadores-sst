@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { AccidentType, EventType, EventRecord, OriginType, FORM_OPTIONS } from '../types';
-import { Plus, X, AlertCircle, ShieldAlert, Clock, User, Briefcase, MapPin, Activity, Save, Calendar as CalendarIcon } from 'lucide-react';
+import { AccidentType, EventType, EventRecord, OriginType, FORM_OPTIONS, CorrectiveActionItem } from '../types';
+import { Plus, X, AlertCircle, ShieldAlert, Clock, User, Briefcase, MapPin, Activity, Save, Calendar as CalendarIcon, Mail, Trash2, Paperclip, Upload } from 'lucide-react';
 import { differenceInDays, parseISO } from 'date-fns';
 
 interface Props {
@@ -97,7 +97,8 @@ export default function EventForm({ onAdd, onUpdate, onClose, editRecord }: Prop
     incapacityStartDate: '',
     incapacityEndDate: '',
     potentialCauses: '',
-    correctiveActions: ''
+    correctiveActions: '',
+    correctiveActionsList: []
   });
 
   // Calculate lost days automatically
@@ -119,12 +120,78 @@ export default function EventForm({ onAdd, onUpdate, onClose, editRecord }: Prop
     }
   }, [formData.incapacityStartDate, formData.incapacityEndDate]);
 
+  // Synchronize record primary date for absenteeism events automatically based on incapacity start date
+  useEffect(() => {
+    if (formData.eventType === EventType.AUSENTISMO && formData.incapacityStartDate) {
+      setFormData(prev => {
+        if (prev.date !== prev.incapacityStartDate) {
+          return { ...prev, date: prev.incapacityStartDate };
+        }
+        return prev;
+      });
+    }
+  }, [formData.eventType, formData.incapacityStartDate]);
+
   useEffect(() => {
     if (editRecord) {
       const { id, ...data } = editRecord;
-      setFormData(data);
+      setFormData({
+        ...data,
+        correctiveActionsList: data.correctiveActionsList || []
+      });
     }
   }, [editRecord]);
+
+  const handleAddAction = () => {
+    const currentList = formData.correctiveActionsList || [];
+    if (currentList.length >= 5) return;
+    const newAction: CorrectiveActionItem = {
+      id: Math.random().toString(36).substring(2, 9),
+      description: '',
+      responsibleName: '',
+      responsiblePosition: '',
+      responsibleEmail: '',
+      executionDate: '',
+      notificationSent: false,
+      status: 'Abierto'
+    };
+    setFormData(prev => ({
+      ...prev,
+      correctiveActionsList: [...currentList, newAction]
+    }));
+  };
+
+  const handleUpdateAction = (index: number, updatedFields: Partial<CorrectiveActionItem>) => {
+    const currentList = [...(formData.correctiveActionsList || [])];
+    if (currentList[index]) {
+      currentList[index] = { ...currentList[index], ...updatedFields };
+      setFormData(prev => ({ ...prev, correctiveActionsList: currentList }));
+    }
+  };
+
+  const handleRemoveAction = (index: number) => {
+    const currentList = (formData.correctiveActionsList || []).filter((_, i) => i !== index);
+    setFormData(prev => ({ ...prev, correctiveActionsList: currentList }));
+  };
+
+  const handleFileUpload = (index: number, file: File) => {
+    if (file.type !== 'application/pdf') {
+      alert('Por favor, cargue únicamente archivos en formato PDF.');
+      return;
+    }
+    
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64Data = reader.result as string;
+      const formattedSize = `${(file.size / (1024 * 1024)).toFixed(2)} MB`;
+      handleUpdateAction(index, {
+        evidenceFileName: file.name,
+        evidenceFileData: base64Data,
+        evidenceFileSize: formattedSize
+      });
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -258,62 +325,101 @@ export default function EventForm({ onAdd, onUpdate, onClose, editRecord }: Prop
 
           {/* Section: Event Specifics */}
           <div className="space-y-4 pt-4 border-t border-gray-50">
-            <div className="flex items-center gap-2 mb-2">
-              <Briefcase size={14} className="text-gray-400" />
-              <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Detalles del Suceso</span>
-            </div>
+            {formData.eventType !== EventType.AUSENTISMO && (
+              <>
+                <div className="flex items-center gap-2 mb-2">
+                  <Briefcase size={14} className="text-gray-400" />
+                  <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Detalles del Suceso</span>
+                </div>
 
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-1">
-                <label className="text-xs font-bold uppercase tracking-wider text-gray-400">Fecha</label>
-                <input
-                  type="date" required
-                  className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
-                  value={formData.date}
-                  onChange={e => setFormData({ ...formData, date: e.target.value })}
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-bold uppercase tracking-wider text-gray-400">Hora</label>
-                <input
-                  type="time"
-                  className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
-                  value={formData.time || ''}
-                  onChange={e => setFormData({ ...formData, time: e.target.value })}
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-bold uppercase tracking-wider text-gray-400">Jornada</label>
-                <select
-                  className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-sm bg-white"
-                  value={formData.workdayType || ''}
-                  onChange={e => setFormData({ ...formData, workdayType: e.target.value })}
-                >
-                  <option value="">Seleccione...</option>
-                  {FORM_OPTIONS.workdayTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-            </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold uppercase tracking-wider text-gray-400">Fecha</label>
+                    <input
+                      type="date" required
+                      className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
+                      value={formData.date}
+                      onChange={e => setFormData({ ...formData, date: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold uppercase tracking-wider text-gray-400">Hora</label>
+                    <input
+                      type="time"
+                      className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
+                      value={formData.time || ''}
+                      onChange={e => setFormData({ ...formData, time: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold uppercase tracking-wider text-gray-400">Jornada</label>
+                    <select
+                      className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-sm bg-white"
+                      value={formData.workdayType || ''}
+                      onChange={e => setFormData({ ...formData, workdayType: e.target.value })}
+                    >
+                      <option value="">Seleccione...</option>
+                      {FORM_OPTIONS.workdayTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+                </div>
 
-            <div className="space-y-1">
-              <label className="text-xs font-bold uppercase tracking-wider text-gray-400">Lugar Específico</label>
-              <select
-                className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-sm bg-white"
-                value={formData.location || ''}
-                onChange={e => setFormData({ ...formData, location: e.target.value })}
-              >
-                <option value="">Seleccione lugar...</option>
-                {FORM_OPTIONS.locations.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-              {formData.location === 'Otro' && (
-                <input
-                  type="text" placeholder="Especifique lugar..."
-                  className="w-full mt-2 p-3 border border-gray-200 rounded-xl outline-none text-sm"
-                  value={formData.locationOther || ''}
-                  onChange={e => setFormData({ ...formData, locationOther: e.target.value })}
-                />
-              )}
-            </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold uppercase tracking-wider text-gray-400">Lugar Específico</label>
+                  <select
+                    className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-sm bg-white"
+                    value={formData.location || ''}
+                    onChange={e => setFormData({ ...formData, location: e.target.value })}
+                  >
+                    <option value="">Seleccione lugar...</option>
+                    {FORM_OPTIONS.locations.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                  {formData.location === 'Otro' && (
+                    <input
+                      type="text" placeholder="Especifique lugar..."
+                      className="w-full mt-2 p-3 border border-gray-200 rounded-xl outline-none text-sm"
+                      value={formData.locationOther || ''}
+                      onChange={e => setFormData({ ...formData, locationOther: e.target.value })}
+                    />
+                  )}
+                </div>
+              </>
+            )}
+
+            {formData.eventType === EventType.AUSENTISMO && (
+              <>
+                <div className="flex items-center gap-2 mb-2">
+                  <Briefcase size={14} className="text-gray-400" />
+                  <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Especificaciones del Ausentismo</span>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-2xl">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold uppercase tracking-wider text-gray-400 font-bold">Origen de la Incapacidad</label>
+                    <select
+                      className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-sm bg-white font-semibold text-gray-700"
+                      value={formData.origin || OriginType.COMUN}
+                      onChange={e => setFormData({ ...formData, origin: e.target.value as OriginType })}
+                    >
+                      <option value={OriginType.COMUN}>Común</option>
+                      <option value={OriginType.LABORAL}>Laboral</option>
+                    </select>
+                  </div>
+                  
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold uppercase tracking-wider text-gray-400 font-bold">¿Es Caso Nuevo de EL?</label>
+                    <select
+                      className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-sm bg-white font-semibold text-gray-700"
+                      value={formData.isNewCase ? 'true' : 'false'}
+                      onChange={e => setFormData({ ...formData, isNewCase: e.target.value === 'true' })}
+                    >
+                      <option value="true">Sí (Caso Nuevo)</option>
+                      <option value="false">No (Caso Antiguo)</option>
+                    </select>
+                  </div>
+                </div>
+              </>
+            )}
 
             {formData.eventType === EventType.ACCIDENTE && (
               <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-2xl">
@@ -435,24 +541,228 @@ export default function EventForm({ onAdd, onUpdate, onClose, editRecord }: Prop
           </div>
 
           {(formData.eventType === EventType.INCIDENTE || formData.eventType === EventType.ACCIDENTE) && (
-            <div className="grid grid-cols-1 gap-6 bg-blue-50/30 p-6 rounded-3xl border border-blue-50">
-              <div className="space-y-1">
-                <label className="text-xs font-bold uppercase tracking-wider text-blue-900/60">Causas Potenciales / Análisis</label>
-                <textarea
-                  rows={2}
-                  className="w-full p-3 border border-blue-100 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white"
-                  value={formData.potentialCauses}
-                  onChange={e => setFormData({ ...formData, potentialCauses: e.target.value })}
-                />
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 gap-6 bg-blue-50/30 p-6 rounded-3xl border border-blue-50">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold uppercase tracking-wider text-blue-900/60">Causas Potenciales / Análisis de Causa Raíz</label>
+                  <textarea
+                    rows={2}
+                    placeholder="Escriba las causas potenciales encontradas (Ej: Falta de protección, piso húmedo, etc.)..."
+                    className="w-full p-3 border border-blue-100 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white"
+                    value={formData.potentialCauses}
+                    onChange={e => setFormData({ ...formData, potentialCauses: e.target.value })}
+                  />
+                </div>
               </div>
-              <div className="space-y-1">
-                <label className="text-xs font-bold uppercase tracking-wider text-emerald-900/60">Acciones Correctivas / Preventivas</label>
-                <textarea
-                  rows={2}
-                  className="w-full p-3 border border-emerald-100 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-sm bg-white"
-                  value={formData.correctiveActions}
-                  onChange={e => setFormData({ ...formData, correctiveActions: e.target.value })}
-                />
+
+              {/* Dynamic Corrective Actions Block (Max 5) */}
+              <div className="space-y-4 bg-emerald-50/10 p-6 rounded-3xl border border-emerald-100/60">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-150 pb-4">
+                  <div className="flex items-center gap-2">
+                    <Activity size={16} className="text-emerald-600" />
+                    <div>
+                      <h4 className="text-sm font-black text-gray-800 uppercase tracking-wider">Plan de Acciones Correctivas y Preventivas</h4>
+                      <p className="text-[10px] text-gray-400 font-medium font-mono">HASTA 5 ACCIONES CON RESPONSABLES Y CIERRES</p>
+                    </div>
+                  </div>
+                  
+                  {(formData.correctiveActionsList || []).length < 5 && (
+                    <button
+                      type="button"
+                      onClick={handleAddAction}
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-extrabold uppercase tracking-widest rounded-xl transition-all flex items-center gap-1.5 shadow-md shadow-emerald-200"
+                    >
+                      <Plus size={12} strokeWidth={2.5} />
+                      Añadir Acción
+                    </button>
+                  )}
+                </div>
+
+                <div className="space-y-5">
+                  {(formData.correctiveActionsList || []).map((action, index) => (
+                    <div 
+                      key={action.id || index} 
+                      className="p-4 bg-white border border-gray-200 rounded-2xl shadow-sm hover:border-emerald-300 transition-all space-y-4 relative"
+                    >
+                      <div className="flex items-center justify-between border-b border-gray-50 pb-2">
+                        <span className="text-[11px] font-black text-emerald-600 uppercase tracking-widest">
+                          Acción #{index + 1}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveAction(index)}
+                          className="p-1 hover:bg-red-50 text-gray-400 hover:text-red-600 rounded-lg transition-all"
+                          title="Eliminar esta acción"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Descripción de la Medida / Acción</label>
+                        <textarea
+                          rows={2}
+                          required
+                          placeholder="Describa puntualmente la acción correctiva o preventiva..."
+                          className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-xs resize-none"
+                          value={action.description || ''}
+                          onChange={e => handleUpdateAction(index, { description: e.target.value })}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Responsable (Nombre)</label>
+                          <div className="relative">
+                            <User size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <input
+                              type="text" required
+                              placeholder="Ej: Sofía Gómez"
+                              className="w-full pl-8 pr-3 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-xs"
+                              value={action.responsibleName || ''}
+                              onChange={e => handleUpdateAction(index, { responsibleName: e.target.value })}
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Cargo</label>
+                          <div className="relative">
+                            <Briefcase size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <input
+                              type="text" required
+                              placeholder="Ej: Inspectora SST"
+                              className="w-full pl-8 pr-3 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-xs"
+                              value={action.responsiblePosition || ''}
+                              onChange={e => handleUpdateAction(index, { responsiblePosition: e.target.value })}
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Correo Electrónico</label>
+                          <div className="relative">
+                            <Mail size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <input
+                              type="email" required
+                              placeholder="ejemplo@correo.com"
+                              className="w-full pl-8 pr-3 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-xs"
+                              value={action.responsibleEmail || ''}
+                              onChange={e => handleUpdateAction(index, { responsibleEmail: e.target.value })}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Fecha de Ejecución</label>
+                          <div className="relative">
+                            <CalendarIcon size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <input
+                              type="date" required
+                              className="w-full pl-8 pr-3 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-xs text-gray-600 bg-white"
+                              value={action.executionDate || ''}
+                              onChange={e => handleUpdateAction(index, { executionDate: e.target.value })}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Notificación Electrónica</label>
+                          <div className="h-[46px] flex items-center pl-1">
+                            <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                              <input
+                                type="checkbox"
+                                className="w-4 h-4 rounded text-emerald-600 border-gray-300 focus:ring-emerald-500 cursor-pointer"
+                                checked={action.notificationSent || false}
+                                onChange={e => handleUpdateAction(index, { notificationSent: e.target.checked })}
+                              />
+                              <span className="text-xs font-semibold text-gray-650">Enviar correo sst</span>
+                            </label>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Estado de Cierre</label>
+                          <select
+                            className={`w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-xs bg-white font-bold ${
+                              action.status === 'Cerrado' ? 'text-green-600' : 'text-amber-500'
+                            }`}
+                            value={action.status || 'Abierto'}
+                            onChange={e => handleUpdateAction(index, { status: e.target.value as 'Abierto' | 'Cerrado' })}
+                          >
+                            <option value="Abierto">🟠 Abierto (Pendiente)</option>
+                            <option value="Cerrado">🟢 Cerrado (Ejecutado)</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* PDF Upload Area if Closed */}
+                      {action.status === 'Cerrado' && (
+                        <div className="bg-emerald-50/30 p-4 rounded-xl border border-dashed border-emerald-200/80 space-y-2 mt-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[9px] font-black text-emerald-800 uppercase tracking-wider">Carga de Soporte / Evidencia Firmada (PDF)</span>
+                            {action.evidenceFileName && (
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateAction(index, { evidenceFileName: undefined, evidenceFileData: undefined, evidenceFileSize: undefined })}
+                                className="text-[9px] font-extrabold text-red-650 hover:text-red-800 uppercase underline"
+                              >
+                                Eliminar Archivo
+                              </button>
+                            )}
+                          </div>
+                          
+                          {!action.evidenceFileName ? (
+                            <div className="flex items-center justify-center w-full">
+                              <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-gray-200 border-dashed rounded-xl cursor-pointer bg-white hover:bg-emerald-50/10 hover:border-emerald-450 transition-all">
+                                <div className="flex flex-col items-center justify-center pt-3 pb-3">
+                                  <Upload size={18} className="text-emerald-500 mb-1.5 animate-pulse" />
+                                  <p className="text-[11px] font-bold text-gray-650">Subir evidencia en PDF o arrastrar aquí</p>
+                                  <p className="text-[8px] text-gray-400 uppercase mt-0.5 font-mono">Únicamente formato .pdf</p>
+                                </div>
+                                <input
+                                  type="file"
+                                  accept="application/pdf"
+                                  className="hidden"
+                                  onChange={e => {
+                                    const file = e.target.files?.[0];
+                                    if (file) handleFileUpload(index, file);
+                                  }}
+                                />
+                              </label>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 bg-white p-3 border border-emerald-200/50 rounded-xl">
+                              <Paperclip size={16} className="text-emerald-600 shrink-0 animate-bounce" />
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-bold text-gray-800 truncate">{action.evidenceFileName}</p>
+                                <p className="text-[10px] text-gray-400 font-semibold">{action.evidenceFileSize}</p>
+                              </div>
+                              <div>
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[8px] font-black uppercase bg-green-100 text-green-800 tracking-wider">
+                                  Evidencia ok ✓
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                  {(formData.correctiveActionsList || []).length === 0 && (
+                    <div className="p-8 text-center border border-dashed border-gray-200 rounded-2xl bg-gray-50/50">
+                      <p className="text-xs font-bold text-gray-400 tracking-normal">No se han registrado acciones correctivas o preventivas individuales en este reporte.</p>
+                      <button
+                        type="button"
+                        onClick={handleAddAction}
+                        className="mt-2.5 px-3 py-1.5 bg-white text-xs font-extrabold text-emerald-600 border border-gray-200 hover:border-emerald-350 shadow-sm hover:shadow-emerald-50 rounded-lg"
+                      >
+                        Definir primera acción (Máx. 5)
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}

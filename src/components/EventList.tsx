@@ -1,5 +1,5 @@
 import { EventRecord, EventType, AccidentType } from '../types';
-import { Calendar, User, MapPin, Clock, Trash2, ShieldAlert, AlertCircle, Activity, Edit2 } from 'lucide-react';
+import { Calendar, User, MapPin, Clock, Trash2, ShieldAlert, AlertCircle, Activity, Edit2, Check, Mail, Paperclip } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -64,13 +64,61 @@ export default function EventList({ records, onDelete, onEdit }: Props) {
                 </td>
                 <td className="px-6 py-4">
                   {record.eventType === EventType.ACCIDENTE ? (
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${
-                      record.accidentType === AccidentType.MORTAL ? 'bg-red-100 text-red-700' :
-                      record.accidentType === AccidentType.INCAPACITANTE ? 'bg-amber-100 text-amber-700' :
-                      'bg-emerald-100 text-emerald-700'
-                    }`}>
-                      {record.accidentType}
-                    </span>
+                    <div className="flex flex-col gap-2 max-w-xs">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider w-fit ${
+                        record.accidentType === AccidentType.MORTAL ? 'bg-red-100 text-red-700' :
+                        record.accidentType === AccidentType.INCAPACITANTE ? 'bg-amber-100 text-amber-700' :
+                        'bg-emerald-100 text-emerald-700'
+                      }`}>
+                        {record.accidentType}
+                      </span>
+                      {record.correctiveActionsList && record.correctiveActionsList.length > 0 ? (
+                        <div className="space-y-1.5 mt-1.5 border-t border-gray-100 pt-1.5">
+                          <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Plan de Acción ({record.correctiveActionsList.length}):</p>
+                          {record.correctiveActionsList.map((action, idx) => (
+                            <div key={action.id || idx} className="text-[10px] bg-emerald-50/20 border border-emerald-100/50 p-2 rounded-xl space-y-1">
+                              <div className="flex items-start justify-between gap-2">
+                                <span className="font-bold text-gray-700 leading-tight block">{action.description}</span>
+                                <span className={`shrink-0 px-1 py-0.5 rounded text-[8px] font-black uppercase ${
+                                  action.status === 'Cerrado' ? 'bg-green-150 text-green-700' : 'bg-amber-150 text-amber-700'
+                                }`}>
+                                  {action.status}
+                                </span>
+                              </div>
+                              <div className="text-[9px] text-gray-500 font-semibold font-mono">
+                                Resp: {action.responsibleName} ({action.responsiblePosition})
+                              </div>
+                              <div className="text-[9px] text-gray-400 flex items-center gap-1">
+                                <span>Ejecución: {action.executionDate}</span>
+                                {action.notificationSent && (
+                                  <span className="text-[8px] font-bold text-emerald-650 uppercase tracking-tighter" title={action.responsibleEmail}>
+                                    (Email OK)
+                                  </span>
+                                )}
+                              </div>
+                              {action.status === 'Cerrado' && action.evidenceFileName && (
+                                <div className="flex items-center gap-1.5 mt-1 pt-1 border-t border-emerald-100/50">
+                                  <Paperclip size={10} className="text-emerald-600" />
+                                  <a
+                                    href={action.evidenceFileData}
+                                    download={action.evidenceFileName}
+                                    className="text-[9px] text-blue-600 font-bold underline hover:text-blue-800 truncate"
+                                    title="Descargar evidencia PDF"
+                                  >
+                                    {action.evidenceFileName}
+                                  </a>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : record.correctiveActions ? (
+                        <p className="text-[10px] text-gray-550 italic leading-tight">
+                          <span className="font-extrabold text-emerald-600 not-italic uppercase pr-1 text-[8px]">Acción:</span> 
+                          {record.correctiveActions}
+                        </p>
+                      ) : null}
+                    </div>
                   ) : record.eventType === EventType.AUSENTISMO ? (
                     <div className="flex flex-col gap-1">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
@@ -83,22 +131,59 @@ export default function EventList({ records, onDelete, onEdit }: Props) {
                       </span>
                     </div>
                   ) : record.eventType === EventType.INCIDENTE ? (
-                    <div className="flex flex-col gap-1 max-w-xs">
+                    <div className="flex flex-col gap-2 max-w-xs">
                       {record.potentialCauses && (
-                        <p className="text-[10px] text-gray-500 italic leading-tight">
-                          <span className="font-extrabold text-blue-600 not-italic uppercase pr-1 text-[8px]">Causa:</span> 
+                        <p className="text-[10px] text-gray-500 leading-tight">
+                          <span className="font-extrabold text-blue-600 uppercase pr-1 text-[8px]">Causa:</span> 
                           {record.potentialCauses}
                         </p>
                       )}
-                      {record.correctiveActions && (
-                        <p className="text-[10px] text-gray-500 italic leading-tight">
+                      {record.correctiveActionsList && record.correctiveActionsList.length > 0 ? (
+                        <div className="space-y-1.5 mt-1.5 border-t border-gray-100 pt-1.5">
+                          <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Plan de Acción ({record.correctiveActionsList.length}):</p>
+                          {record.correctiveActionsList.map((action, idx) => (
+                            <div key={action.id || idx} className="text-[10px] bg-blue-50/20 border border-blue-100/50 p-2 rounded-xl space-y-1">
+                              <div className="flex items-start justify-between gap-2">
+                                <span className="font-bold text-gray-700 leading-tight block">{action.description}</span>
+                                <span className={`shrink-0 px-1 py-0.5 rounded text-[8px] font-black uppercase ${
+                                  action.status === 'Cerrado' ? 'bg-green-150 text-green-700' : 'bg-amber-150 text-amber-700'
+                                }`}>
+                                  {action.status}
+                                </span>
+                              </div>
+                              <div className="text-[9px] text-gray-500 font-semibold font-mono">
+                                Resp: {action.responsibleName} ({action.responsiblePosition})
+                              </div>
+                              <div className="text-[9px] text-gray-400 flex items-center gap-1">
+                                <span>Ejecución: {action.executionDate}</span>
+                                {action.notificationSent && (
+                                  <span className="text-[8px] font-bold text-emerald-650 uppercase tracking-tighter" title={action.responsibleEmail}>
+                                    (Email OK)
+                                  </span>
+                                )}
+                              </div>
+                              {action.status === 'Cerrado' && action.evidenceFileName && (
+                                <div className="flex items-center gap-1.5 mt-1 pt-1 border-t border-blue-100/50">
+                                  <Paperclip size={10} className="text-blue-600" />
+                                  <a
+                                    href={action.evidenceFileData}
+                                    download={action.evidenceFileName}
+                                    className="text-[9px] text-blue-600 font-bold underline hover:text-blue-800 truncate"
+                                    title="Descargar evidencia PDF"
+                                  >
+                                    {action.evidenceFileName}
+                                  </a>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : record.correctiveActions ? (
+                        <p className="text-[10px] text-gray-550 italic leading-tight">
                           <span className="font-extrabold text-emerald-600 not-italic uppercase pr-1 text-[8px]">Acción:</span> 
                           {record.correctiveActions}
                         </p>
-                      )}
-                      {!record.potentialCauses && !record.correctiveActions && (
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-300">Sin investigación</span>
-                      )}
+                      ) : null}
                     </div>
                   ) : (
                     <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">-</span>

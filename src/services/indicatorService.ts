@@ -15,7 +15,7 @@ export const calculateIndicators = (
   });
 
   return months.map(month => {
-    const monthRecords = records.filter(r => format(parseISO(r.date), "yyyy-MM") === month);
+    const monthRecords = records.filter(r => r.date.startsWith(month));
     const employeeCount = monthlyEmployeeCount[month] || 1;
     const programmedDays = monthlyProgrammedDays[month] || (employeeCount * 30);
 

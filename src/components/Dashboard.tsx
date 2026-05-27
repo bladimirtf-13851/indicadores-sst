@@ -70,9 +70,34 @@ export default function Dashboard({ data, yearlyData }: Props) {
 
   const activeIndicator = indicators.find(i => i.key === selectedIndicator) || indicators[0];
 
-  const currentMonth = format(new Date(), 'yyyy-MM');
-  const currentMonthData = data.find(d => d.month === currentMonth);
-  const latest = currentMonthData || data[data.length - 1] || { 
+  const getDefaultMonth = () => {
+    const current = format(new Date(), 'yyyy-MM');
+    const currentData = data.find(d => d.month === current);
+    
+    // If current month has some records or indicators, use it
+    if (currentData && (currentData.frecuencia > 0 || currentData.severidad > 0 || currentData.accidentCount > 0)) {
+      return current;
+    }
+    
+    // Otherwise, check if any other month in the data has any indicator data
+    const nonZeroMonths = data.filter(d => d.frecuencia > 0 || d.severidad > 0 || d.accidentCount > 0);
+    if (nonZeroMonths.length > 0) {
+      // Return the most recent month with data
+      const sorted = [...nonZeroMonths].sort((a, b) => b.month.localeCompare(a.month));
+      return sorted[0].month;
+    }
+    
+    return current;
+  };
+
+  const [selectedMonth, setSelectedMonth] = useState<string>(getDefaultMonth);
+
+  // Sync selectedMonth if data changes and current state is no longer optimal
+  useEffect(() => {
+    setSelectedMonth(getDefaultMonth());
+  }, [data]);
+
+  const latest = data.find(d => d.month === selectedMonth) || data.find(d => d.month === format(new Date(), 'yyyy-MM')) || data[data.length - 1] || { 
     frecuencia: 0, 
     severidad: 0, 
     mortalidad: 0, 
@@ -91,13 +116,47 @@ export default function Dashboard({ data, yearlyData }: Props) {
     }
   };
 
+  const formatMonthFull = (monthStr: string) => {
+    try {
+      const formatted = format(parseISO(`${monthStr}-01`), 'MMMM yyyy', { locale: es });
+      return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+    } catch (e) {
+      return monthStr;
+    }
+  };
+
   return (
     <div className="space-y-12">
       {/* Primary Indicators Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {/* Accidentalidad Section */}
         <div className="lg:col-span-3">
-          <h4 className="text-xs font-bold text-gray-400 uppercase tracking-[0.2em] mb-4">Indicadores de Accidentalidad</h4>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+            <h4 className="text-xs font-bold text-gray-400 uppercase tracking-[0.2em]">Indicadores de Accidentalidad</h4>
+            
+            {/* Month Filter Selector */}
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-black text-gray-400 uppercase tracking-wider">Período Mensual:</span>
+              <div className="relative">
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  className="appearance-none flex items-center pl-4 pr-10 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-semibold text-gray-750 hover:border-emerald-500 transition-all shadow-sm outline-none min-w-[180px]"
+                  style={{ 
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`, 
+                    backgroundRepeat: 'no-repeat', 
+                    backgroundPosition: 'right 12px center' 
+                  }}
+                >
+                  {data.map(d => (
+                    <option key={d.month} value={d.month}>
+                      {formatMonthFull(d.month)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <IndicatorCard 
               title="Frecuencia AT" 

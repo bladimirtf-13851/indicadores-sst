@@ -15,6 +15,20 @@ export enum OriginType {
   COMUN = "Común"
 }
 
+export interface CorrectiveActionItem {
+  id: string;
+  description: string;
+  responsibleName: string;
+  responsiblePosition: string;
+  responsibleEmail: string;
+  executionDate: string;
+  notificationSent: boolean;
+  status: 'Abierto' | 'Cerrado';
+  evidenceFileName?: string;
+  evidenceFileData?: string; // base64 string
+  evidenceFileSize?: string;
+}
+
 export interface EventRecord {
   id: string;
   companyId?: string;
@@ -47,6 +61,7 @@ export interface EventRecord {
   incapacityEndDate?: string;
   potentialCauses?: string;
   correctiveActions?: string;
+  correctiveActionsList?: CorrectiveActionItem[];
 }
 
 export const FORM_OPTIONS = {

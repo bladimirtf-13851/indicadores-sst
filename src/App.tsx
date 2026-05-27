@@ -267,6 +267,16 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-4">
+              {isAdmin && currentCompany && (
+                <button
+                  onClick={() => setShowUserModal(currentCompany)}
+                  className="bg-white hover:bg-gray-50 text-emerald-600 border border-gray-200 px-5 py-3 rounded-2xl text-sm font-bold transition-all active:scale-95 flex items-center gap-2 shadow-sm"
+                  title="Gestionar Usuarios de esta Empresa"
+                >
+                  <Users size={18} />
+                  <span className="hidden sm:inline">Usuarios</span>
+                </button>
+              )}
               <button
                 onClick={() => setShowEventForm(true)}
                 className="bg-gray-900 hover:bg-black text-white px-6 py-3 rounded-2xl text-sm font-bold transition-all shadow-xl shadow-gray-900/10 active:scale-95 flex items-center gap-2"

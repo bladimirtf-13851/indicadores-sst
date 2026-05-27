@@ -8,6 +8,8 @@ interface UserProfile {
   email: string | null;
   role: 'admin' | 'company';
   companyId?: string;
+  name?: string;
+  active?: boolean;
 }
 
 interface AuthContextType {
@@ -39,12 +41,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
           if (userDoc.exists()) {
             const data = userDoc.data();
-            setProfile({
-              id: firebaseUser.uid,
-              email: firebaseUser.email,
-              role: data.role,
-              companyId: data.companyId,
-            });
+            if (data.active === false) {
+              setProfile(null);
+            } else {
+              setProfile({
+                id: firebaseUser.uid,
+                email: firebaseUser.email,
+                role: data.role,
+                companyId: data.companyId,
+                name: data.name,
+                active: data.active !== false,
+              });
+            }
           } else {
             setProfile(null);
           }

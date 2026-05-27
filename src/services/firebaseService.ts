@@ -101,12 +101,28 @@ export const firebaseService = {
   },
 
   // Users & Roles
-  async createUserProfile(uid: string, email: string, role: 'admin' | 'company', companyId?: string) {
+  async createUserProfile(uid: string, email: string, role: 'admin' | 'company', companyId?: string, name?: string, active: boolean = true) {
     return await setDoc(doc(db, 'users', uid), {
       email,
       role,
       companyId: companyId || null,
+      name: name || '',
+      active,
       createdAt: new Date().toISOString()
     });
+  },
+
+  async getCompanyUsers(companyId: string) {
+    const q = query(collection(db, 'users'), where('companyId', '==', companyId));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  },
+
+  async updateUserProfile(uid: string, data: any) {
+    return await updateDoc(doc(db, 'users', uid), data);
+  },
+
+  async deleteUserProfile(uid: string) {
+    return await deleteDoc(doc(db, 'users', uid));
   }
 };

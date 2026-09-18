@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
+import { collection, query, where, getDocs, doc, setDoc, updateDoc } from 'firebase/firestore';
 import { Company } from '../types';
 import { firebaseService } from '../services/firebaseService';
+import { db } from '../lib/firebase';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { X, Mail, Lock, UserPlus, Copy, Check, Send, Trash2, Edit2, User, Power, RefreshCw, Plus, AlertCircle } from 'lucide-react';
+import { X, Mail, Lock, UserPlus, Copy, Check, Send, Trash2, Edit2, User, Power, RefreshCw, Plus, AlertCircle, Link } from 'lucide-react';
 
 interface Props {
   company: Company;
@@ -53,26 +55,57 @@ export default function CompanyUserModal({ company, onClose }: Props) {
     fetchUsers();
   }, [company.id]);
 
+  const mapFirebaseAuthError = (err: any): string => {
+    const code = err?.code || '';
+    const msg = err?.message || '';
+
+    if (code === 'auth/email-already-in-use' || msg.includes('email-already-in-use')) {
+      return 'El correo electrónico ya se encuentra registrado. Se ha intentado asociar automáticamente a esta empresa.';
+    }
+    if (code === 'auth/weak-password' || msg.includes('weak-password')) {
+      return 'La contraseña es muy débil. Debe tener un mínimo de 6 caracteres.';
+    }
+    if (code === 'auth/invalid-email' || msg.includes('invalid-email')) {
+      return 'El formato de correo electrónico no es válido. Por favor verifique el texto ingresado.';
+    }
+    if (code === 'auth/network-request-failed' || msg.includes('network-request-failed')) {
+      return 'Error de red al conectar con el servidor de autenticación. Intente nuevamente.';
+    }
+    return msg || 'Error al procesar la creación del usuario.';
+  };
+
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
-    // Secondary app instance to create user without logging out the admin
-    const secondaryApp = initializeApp(firebaseConfig, 'secondary');
-    const secondaryAuth = getAuth(secondaryApp);
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPassword = password.trim();
+
+    if (cleanPassword.length < 6) {
+      setError('La contraseña debe tener mínimo 6 caracteres.');
+      setLoading(false);
+      return;
+    }
+
+    // Generate unique app name to strictly prevent [app/duplicate-app] error
+    const uniqueAppName = `secondary-auth-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    let secondaryApp: any = null;
 
     try {
-      const { user } = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+      secondaryApp = initializeApp(firebaseConfig, uniqueAppName);
+      const secondaryAuth = getAuth(secondaryApp);
+
+      const { user } = await createUserWithEmailAndPassword(secondaryAuth, cleanEmail, cleanPassword);
       
       // Create profile in Firestore
-      await firebaseService.createUserProfile(user.uid, email, 'company', company.id, name, true);
+      await firebaseService.createUserProfile(user.uid, cleanEmail, 'company', company.id, name.trim(), true);
       
-      // Cleanup
+      // Cleanup secondary auth
       await signOut(secondaryAuth);
       
       // Save for credential copy
-      setTempCredentials({ email, pass: password });
+      setTempCredentials({ email: cleanEmail, pass: cleanPassword });
       
       // Refresh user view
       await fetchUsers();
@@ -82,10 +115,48 @@ export default function CompanyUserModal({ company, onClose }: Props) {
       setEmail('');
       setPassword('');
     } catch (err: any) {
-      setError(err.message || 'Error al crear el usuario.');
+      console.warn("Attempting recovery or fallback for user creation:", err);
+      const isAlreadyInUse = err?.code === 'auth/email-already-in-use' || err?.message?.includes('email-already-in-use');
+
+      if (isAlreadyInUse) {
+        try {
+          // If the user was already created in Auth, link their profile in Firestore to this company!
+          const q = query(collection(db, 'users'), where('email', '==', cleanEmail));
+          const snapshot = await getDocs(q);
+
+          if (!snapshot.empty) {
+            const userDoc = snapshot.docs[0];
+            await updateDoc(doc(db, 'users', userDoc.id), {
+              companyId: company.id,
+              role: 'company',
+              active: true,
+              ...(name.trim() ? { name: name.trim() } : {})
+            });
+            setTempCredentials({ email: cleanEmail, pass: '(Contraseña ya existente)' });
+            await fetchUsers();
+            setName('');
+            setEmail('');
+            setPassword('');
+            return;
+          } else {
+            // Document does not exist in 'users' collection yet
+            setError('El correo ya existe en la base de usuarios de autenticación. Por favor asigne otro correo o utilice las credenciales originales.');
+          }
+        } catch (profileErr: any) {
+          setError(mapFirebaseAuthError(err));
+        }
+      } else {
+        setError(mapFirebaseAuthError(err));
+      }
     } finally {
       setLoading(false);
-      if (secondaryApp) deleteApp(secondaryApp);
+      if (secondaryApp) {
+        try {
+          await deleteApp(secondaryApp);
+        } catch (delErr) {
+          console.warn("Error cleaning secondary app instance:", delErr);
+        }
+      }
     }
   };
 
@@ -154,8 +225,8 @@ export default function CompanyUserModal({ company, onClose }: Props) {
               <Check size={32} />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-gray-900">Usuario Creado con Éxito</h3>
-              <p className="text-gray-400 text-xs mt-1">Copia estos datos y envíalos de forma segura. No podrán verse después.</p>
+              <h3 className="text-lg font-bold text-gray-900">Usuario Asignado con Éxito</h3>
+              <p className="text-gray-400 text-xs mt-1">Copia estos datos y envíalos de forma segura al responsable de la empresa.</p>
             </div>
             
             <div className="bg-gray-50 p-5 rounded-2xl text-left space-y-2.5 font-mono text-xs border border-gray-150">
@@ -190,8 +261,8 @@ export default function CompanyUserModal({ company, onClose }: Props) {
             <h3 className="text-sm font-black text-emerald-600 uppercase tracking-wider mb-2">Crear Nuevo Acceso Corporativo</h3>
             
             {error && (
-              <div className="bg-red-50 text-red-600 p-4 rounded-xl text-xs font-bold flex items-center gap-2">
-                <AlertCircle size={15} />
+              <div className="bg-red-50 text-red-700 border border-red-200 p-4 rounded-xl text-xs font-bold flex items-start gap-2">
+                <AlertCircle size={16} className="shrink-0 text-red-600 mt-0.5" />
                 <span>{error}</span>
               </div>
             )}
@@ -203,7 +274,7 @@ export default function CompanyUserModal({ company, onClose }: Props) {
                 <input
                   type="text"
                   required
-                  placeholder="Ej: Carolina Rojas"
+                  placeholder="Ej: Administrador Carnes Danny"
                   className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all text-xs font-semibold text-gray-700"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -218,7 +289,7 @@ export default function CompanyUserModal({ company, onClose }: Props) {
                 <input
                   type="email"
                   required
-                  placeholder="usuario@empresa.com"
+                  placeholder="usuario@carnesdanny.com"
                   className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all text-xs font-semibold text-gray-700"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -227,13 +298,14 @@ export default function CompanyUserModal({ company, onClose }: Props) {
             </div>
 
             <div className="space-y-1">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 ml-1">Contraseña Temporal de Acceso</label>
+              <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 ml-1">Contraseña de Acceso (mínimo 6 caracteres)</label>
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                 <input
                   type="password"
                   required
-                  placeholder="Mínimo 8 caracteres"
+                  minLength={6}
+                  placeholder="Ej: Carnes2026*"
                   className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all text-xs font-semibold text-gray-700"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -266,7 +338,10 @@ export default function CompanyUserModal({ company, onClose }: Props) {
                 Usuarios Registrados ({users.length})
               </span>
               <button
-                onClick={() => setIsCreating(true)}
+                onClick={() => {
+                  setError('');
+                  setIsCreating(true);
+                }}
                 className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-md shadow-emerald-100"
               >
                 <Plus size={14} strokeWidth={2.5} />

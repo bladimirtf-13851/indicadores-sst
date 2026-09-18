@@ -12,7 +12,7 @@ import {
   onSnapshot
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { Company, EventRecord, MonthlyIndicator } from '../types';
+import { Company, EventRecord, MonthlyIndicator, AccidentInvestigation } from '../types';
 
 export const firebaseService = {
   // Companies
@@ -30,6 +30,32 @@ export const firebaseService = {
 
   async addCompany(company: Omit<Company, 'id'>) {
     return await addDoc(collection(db, 'companies'), company);
+  },
+
+  // Investigations (Resolución 1401/2007)
+  async getInvestigations(companyId: string) {
+    const q = query(collection(db, 'investigations'), where('companyId', '==', companyId));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AccidentInvestigation));
+  },
+
+  listenInvestigations(companyId: string, callback: (investigations: AccidentInvestigation[]) => void) {
+    const q = query(collection(db, 'investigations'), where('companyId', '==', companyId));
+    return onSnapshot(q, (snapshot) => {
+      callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AccidentInvestigation)));
+    });
+  },
+
+  async addInvestigation(investigation: Omit<AccidentInvestigation, 'id'>) {
+    return await addDoc(collection(db, 'investigations'), investigation);
+  },
+
+  async updateInvestigation(id: string, investigation: Partial<AccidentInvestigation>) {
+    return await updateDoc(doc(db, 'investigations', id), investigation);
+  },
+
+  async deleteInvestigation(id: string) {
+    return await deleteDoc(doc(db, 'investigations', id));
   },
 
   // Records

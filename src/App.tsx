@@ -1,25 +1,42 @@
 import React, { useState, useEffect } from 'react';
-import { EventRecord, AppState, EventType, Company, CompanyData, MonthlyIndicator, YearlyIndicator } from './types';
-import { calculateIndicators, calculateYearlyIndicators } from './services/indicatorService';
-import { firebaseService } from './services/firebaseService';
 import { useAuth } from './contexts/AuthContext';
-import { auth } from './lib/firebase';
-import { signOut } from 'firebase/auth';
+import { Company, EventRecord, MonthlyIndicator, YearlyIndicator, AccidentInvestigation, EventType } from './types';
+import { firebaseService } from './services/firebaseService';
 import Dashboard from './components/Dashboard';
 import EventForm from './components/EventForm';
 import EventList from './components/EventList';
 import CompanyList from './components/CompanyList';
 import CompanyForm from './components/CompanyForm';
 import CompanyUserModal from './components/CompanyUserModal';
+import AccidentInvestigationList from './components/AccidentInvestigationList';
+import AccidentInvestigationModal from './components/AccidentInvestigationModal';
 import Login from './components/Login';
 import Logo from './components/Logo';
-import { Plus, LayoutDashboard, List, Users, CalendarRange, Building2, ArrowLeft, LogOut, UserCheck, ShieldAlert, RefreshCw } from 'lucide-react';
+import { 
+  Plus, 
+  Building2, 
+  LayoutDashboard, 
+  List, 
+  LogOut, 
+  ArrowLeft, 
+  UserCheck, 
+  Users, 
+  ShieldAlert, 
+  RefreshCw, 
+  CalendarRange, 
+  GitFork,
+  FileCheck2,
+  CheckCircle
+} from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { calculateIndicators, calculateYearlyIndicators } from './services/indicatorService';
+import { auth } from './lib/firebase';
+import { signOut } from 'firebase/auth';
 
 export default function App() {
   const { user, profile, loading, isAdmin } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'list'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'list' | 'investigations'>('dashboard');
   const [showEventForm, setShowEventForm] = useState(false);
   const [editingRecord, setEditingRecord] = useState<EventRecord | null>(null);
   const [showCompanyForm, setShowCompanyForm] = useState(false);
@@ -27,6 +44,12 @@ export default function App() {
     return localStorage.getItem('sst_selected_company');
   });
   const [showUserModal, setShowUserModal] = useState<Company | null>(null);
+
+  // Investigation states
+  const [investigations, setInvestigations] = useState<AccidentInvestigation[]>([]);
+  const [showInvestigationModal, setShowInvestigationModal] = useState(false);
+  const [selectedInvestigation, setSelectedInvestigation] = useState<AccidentInvestigation | null>(null);
+  const [investigationTargetRecord, setInvestigationTargetRecord] = useState<EventRecord | null>(null);
 
   // Persist local UI state
   useEffect(() => {
@@ -54,7 +77,6 @@ export default function App() {
       if (isAdmin) {
         return firebaseService.listenCompanies(setCompanies);
       } else if (profile.companyId) {
-        // Find own company for display
         firebaseService.getCompanies().then(list => {
           const mine = list.find(c => c.id === profile.companyId);
           if (mine) setCompanies([mine]);
@@ -63,20 +85,23 @@ export default function App() {
     }
   }, [user, profile, isAdmin]);
 
-  // Record & Config listeners based on selection
+  // Record, Config & Investigation listeners based on company selection
   useEffect(() => {
     const companyIdToTrack = isAdmin ? selectedCompanyId : profile?.companyId;
     
     if (companyIdToTrack) {
       const unsubRecords = firebaseService.listenRecords(companyIdToTrack, setRecords);
       const unsubConfigs = firebaseService.listenConfigs(companyIdToTrack, setMonthlyConfig);
+      const unsubInvestigations = firebaseService.listenInvestigations(companyIdToTrack, setInvestigations);
       return () => {
         unsubRecords();
         unsubConfigs();
+        unsubInvestigations();
       };
     } else {
       setRecords([]);
       setMonthlyConfig({ monthlyEmployeeCount: {}, monthlyProgrammedDays: {} });
+      setInvestigations([]);
     }
   }, [selectedCompanyId, profile, isAdmin]);
 
@@ -93,9 +118,8 @@ export default function App() {
     return <Login />;
   }
 
-  // Security barrier: if user exists but no profile, they are pending or invalid
+  // Security barrier: if user exists but no profile, check pending status
   if (!profile) {
-    // Check if we should allow first admin creation
     return (
       <div className="min-h-screen bg-[#F8F9FB] flex items-center justify-center p-6">
         <div className="bg-white p-10 rounded-[40px] shadow-2xl max-w-md w-full text-center space-y-6">
@@ -117,7 +141,6 @@ export default function App() {
             Cerrar Sesión
           </button>
           
-          {/* Temporary Bootstrap Link for first user */}
           {(user?.email?.toLowerCase() === 'bladimirtf@gmail.com' || user?.email?.toLowerCase() === 'bladimir.torres@edu-flex.com') && (
             <div className="pt-6 border-t border-gray-100 mt-4">
               <p className="text-[10px] text-emerald-600 font-black uppercase mb-3 tracking-widest">Acceso de Administrador Maestro</p>
@@ -149,7 +172,7 @@ export default function App() {
       await firebaseService.addCompany(companyData);
       setShowCompanyForm(false);
     } catch (err) {
-      alert("Error al guardar la empresa en el servidor: " + (err instanceof Error ? err.message : "Error desconocido"));
+      alert("Error al guardar la empresa: " + (err instanceof Error ? err.message : "Error"));
     }
   };
 
@@ -206,7 +229,7 @@ export default function App() {
     }
   };
 
-  // Calculations
+  // KPI Calculations
   const indicators = calculateIndicators(
     records,
     monthlyConfig.monthlyEmployeeCount,
@@ -219,10 +242,15 @@ export default function App() {
     monthlyConfig.monthlyProgrammedDays
   );
 
-  const currentMonth = format(new Date(), 'yyyy-MM');
   const currentCompany = isAdmin 
     ? (selectedCompanyId ? companies.find(c => c.id === selectedCompanyId) : null)
     : companies[0];
+
+  // Count pending investigations for accident records
+  const investigatedRecordIds = new Set(investigations.map(inv => inv.recordId));
+  const pendingAccidentsCount = records.filter(
+    r => r.eventType === EventType.ACCIDENTE && !investigatedRecordIds.has(r.id)
+  ).length;
 
   return (
     <div className="min-h-screen bg-[#F8F9FB] text-gray-900 font-sans">
@@ -233,6 +261,7 @@ export default function App() {
             <button 
               onClick={() => setSelectedCompanyId(null)}
               className="p-2 hover:bg-gray-100 rounded-xl transition-colors mr-2 text-gray-500"
+              title="Volver a lista de empresas"
             >
               <ArrowLeft size={20} />
             </button>
@@ -250,48 +279,64 @@ export default function App() {
             <div className="hidden md:flex items-center gap-1 bg-gray-100/50 p-1.5 rounded-2xl border border-gray-100">
               <button
                 onClick={() => setActiveTab('dashboard')}
-                className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${
-                  activeTab === 'dashboard' ? 'bg-white text-emerald-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                  activeTab === 'dashboard' ? 'bg-white text-emerald-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
-                <LayoutDashboard size={18} />
-                Dashboard
+                <LayoutDashboard size={16} />
+                Indicadores KPI
               </button>
               <button
                 onClick={() => setActiveTab('list')}
-                className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${
-                  activeTab === 'list' ? 'bg-white text-emerald-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                  activeTab === 'list' ? 'bg-white text-emerald-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
-                <List size={18} />
-                Registros
+                <List size={16} />
+                Reporte Eventos (FURAT)
+              </button>
+              <button
+                onClick={() => setActiveTab('investigations')}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all relative ${
+                  activeTab === 'investigations' ? 'bg-white text-emerald-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <GitFork size={16} />
+                Investigaciones (Res. 1401)
+                {pendingAccidentsCount > 0 && (
+                  <span className="ml-1 px-1.5 py-0.5 bg-amber-500 text-white rounded-full text-[9px] font-black animate-pulse">
+                    {pendingAccidentsCount}
+                  </span>
+                )}
               </button>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
               {isAdmin && currentCompany && (
                 <button
                   onClick={() => setShowUserModal(currentCompany)}
-                  className="bg-white hover:bg-gray-50 text-emerald-600 border border-gray-200 px-5 py-3 rounded-2xl text-sm font-bold transition-all active:scale-95 flex items-center gap-2 shadow-sm"
-                  title="Gestionar Usuarios de esta Empresa"
+                  className="bg-white hover:bg-gray-50 text-emerald-600 border border-gray-200 px-4 py-2.5 rounded-2xl text-xs font-bold transition-all active:scale-95 flex items-center gap-2 shadow-xs"
+                  title="Gestionar Accesos y Usuarios de esta Empresa"
                 >
-                  <Users size={18} />
+                  <Users size={16} />
                   <span className="hidden sm:inline">Usuarios</span>
                 </button>
               )}
+              
               <button
                 onClick={() => setShowEventForm(true)}
-                className="bg-gray-900 hover:bg-black text-white px-6 py-3 rounded-2xl text-sm font-bold transition-all shadow-xl shadow-gray-900/10 active:scale-95 flex items-center gap-2"
+                className="bg-gray-900 hover:bg-black text-white px-5 py-2.5 rounded-2xl text-xs font-bold transition-all shadow-lg shadow-gray-900/10 active:scale-95 flex items-center gap-2"
               >
-                <Plus size={18} />
+                <Plus size={16} />
                 <span className="hidden sm:inline">Nuevo Evento</span>
               </button>
+
               <button 
                 onClick={handleSignOut}
-                className="p-3 text-gray-400 hover:text-red-600 transition-colors bg-white rounded-2xl border border-gray-100 shadow-sm"
+                className="p-2.5 text-gray-400 hover:text-red-600 transition-colors bg-white rounded-2xl border border-gray-100 shadow-xs"
                 title="Cerrar Sesión"
               >
-                <LogOut size={20} />
+                <LogOut size={18} />
               </button>
             </div>
           </>
@@ -324,7 +369,7 @@ export default function App() {
                 <h2 className="text-3xl font-extrabold text-gray-900 tracking-tight">
                   Empresas Clientes
                 </h2>
-                <p className="text-gray-400 font-medium mt-1">Gestión centralizada de cuentas corporativas y usuarios.</p>
+                <p className="text-gray-400 font-medium mt-1">Gestión centralizada de cuentas corporativas y accesos.</p>
               </div>
               <div className="flex items-center gap-3 bg-emerald-50 px-4 py-2 rounded-2xl text-emerald-700">
                 <UserCheck size={20} />
@@ -348,7 +393,7 @@ export default function App() {
                     }}
                     className="absolute bottom-6 right-6 p-2.5 bg-emerald-600 text-white rounded-xl shadow-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-emerald-700 flex items-center gap-2 text-xs font-bold"
                   >
-                    <UserPlus size={16} />
+                    <Users size={16} />
                     Gestionar Usuario
                   </button>
                 </div>
@@ -364,25 +409,26 @@ export default function App() {
           </>
         ) : (
           <>
-            {/* Config Section */}
+            {/* Top Bar / Configuration */}
             <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-10">
               <div>
                 <h2 className="text-3xl font-extrabold text-gray-900 tracking-tight">
-                  {activeTab === 'dashboard' ? 'Panel de Control' : 'Historial de Eventos'}
+                  {activeTab === 'dashboard' ? 'Panel de Indicadores KPI' : activeTab === 'list' ? 'Registro de Eventos (FURAT)' : 'Investigaciones de Accidentes'}
                 </h2>
                 <p className="text-gray-400 font-medium mt-1">
-                  {currentCompany?.name} • Monitoreo de indicadores de seguridad.
+                  {currentCompany?.name} • Cumplimiento Resolución 0312/2019 & Resolución 1401/2007.
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-4">
-                {/* Period Selector Card */}
-                <div className="bg-white px-5 py-2.5 rounded-3xl border border-gray-100 shadow-sm flex items-center gap-3">
-                  <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
-                    <CalendarRange size={18} />
+              {/* Monthly Config Quick Bar */}
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Period Selector */}
+                <div className="bg-white px-4 py-2 rounded-2xl border border-gray-100 shadow-xs flex items-center gap-2.5">
+                  <div className="p-1.5 bg-emerald-50 text-emerald-600 rounded-xl">
+                    <CalendarRange size={16} />
                   </div>
                   <div>
-                    <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400">Período a Configurar</p>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Mes a Configurar</p>
                     <select
                       value={configMonth}
                       onChange={(e) => setConfigMonth(e.target.value)}
@@ -405,53 +451,67 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="bg-white px-5 py-2.5 rounded-3xl border border-gray-100 shadow-sm flex items-center gap-4">
-                  <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
-                    <Users size={18} />
+                {/* Workers Count */}
+                <div className="bg-white px-4 py-2 rounded-2xl border border-gray-100 shadow-xs flex items-center gap-2.5">
+                  <div className="p-1.5 bg-blue-50 text-blue-600 rounded-xl">
+                    <Users size={16} />
                   </div>
                   <div>
-                    <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400">Trabajadores</p>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Trabajadores</p>
                     {editingEmployees ? (
                       <input
                         type="number"
                         autoFocus
+                        min="0"
                         className="text-xs font-extrabold w-16 outline-none border-b-2 border-emerald-500"
                         value={monthlyConfig.monthlyEmployeeCount[configMonth] || 0}
                         onChange={(e) => updateMonthlyValue('employeeCount', configMonth, parseInt(e.target.value) || 0)}
                         onBlur={() => setEditingEmployees(false)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') setEditingEmployees(false);
+                        }}
                       />
                     ) : (
                       <p 
-                        className="text-xs font-extrabold text-gray-900 cursor-pointer hover:text-emerald-600 transition-colors"
+                        className="text-xs font-extrabold text-gray-900 cursor-pointer hover:text-emerald-600 transition-colors flex items-center gap-1"
                         onClick={() => setEditingEmployees(true)}
+                        title="Clic para editar trabajadores del mes"
                       >
                         {monthlyConfig.monthlyEmployeeCount[configMonth] || 0}
+                        <span className="text-[10px] text-gray-400 font-normal">pers.</span>
                       </p>
                     )}
                   </div>
                 </div>
 
-                <div className="bg-white px-5 py-2.5 rounded-3xl border border-gray-100 shadow-sm flex items-center gap-4">
-                  <div className="p-2 bg-amber-50 text-amber-600 rounded-xl">
-                    <CalendarRange size={18} />
+                {/* Programmed Days */}
+                <div className="bg-white px-4 py-2 rounded-2xl border border-gray-100 shadow-xs flex items-center gap-2.5">
+                  <div className="p-1.5 bg-amber-50 text-amber-600 rounded-xl">
+                    <CalendarRange size={16} />
                   </div>
                   <div>
-                    <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400">Días Programados</p>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Días Programados</p>
                     {editingDays ? (
                       <input
                         type="number"
                         autoFocus
+                        min="0"
                         className="text-xs font-extrabold w-20 outline-none border-b-2 border-emerald-500"
                         value={monthlyConfig.monthlyProgrammedDays[configMonth] || 0}
                         onChange={(e) => updateMonthlyValue('programmedDays', configMonth, parseInt(e.target.value) || 0)}
                         onBlur={() => setEditingDays(false)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') setEditingDays(false);
+                        }}
                       />
                     ) : (
                       <p 
-                        className="text-xs font-extrabold text-gray-900 cursor-pointer hover:text-emerald-600 transition-colors"
+                        className="text-xs font-extrabold text-gray-900 cursor-pointer hover:text-emerald-600 transition-colors flex items-center gap-1"
                         onClick={() => setEditingDays(true)}
+                        title="Clic para editar días programados"
                       >
                         {monthlyConfig.monthlyProgrammedDays[configMonth] || 0}
+                        <span className="text-[10px] text-gray-400 font-normal">días</span>
                       </p>
                     )}
                   </div>
@@ -459,14 +519,53 @@ export default function App() {
               </div>
             </div>
 
-            {/* Content Area */}
-            {activeTab === 'dashboard' ? (
-              <Dashboard data={indicators} yearlyData={yearlyIndicators} />
-            ) : (
+            {/* Content Area according to active tab */}
+            {activeTab === 'dashboard' && (
+              <Dashboard 
+                data={indicators} 
+                yearlyData={yearlyIndicators}
+                selectedMonth={configMonth}
+                onMonthChange={(m) => setConfigMonth(m)}
+                onUpdateEmployeeCount={(month, count) => {
+                  updateMonthlyValue('employeeCount', month, count);
+                }}
+              />
+            )}
+
+            {activeTab === 'list' && (
               <EventList 
                 records={records} 
                 onDelete={deleteRecord} 
-                onEdit={handleEditRecord} 
+                onEdit={handleEditRecord}
+                onInvestigate={(record) => {
+                  setInvestigationTargetRecord(record);
+                  setSelectedInvestigation(null);
+                  setShowInvestigationModal(true);
+                }}
+              />
+            )}
+
+            {activeTab === 'investigations' && (
+              <AccidentInvestigationList
+                company={currentCompany || null}
+                records={records}
+                investigations={investigations}
+                onNewInvestigation={(record) => {
+                  setInvestigationTargetRecord(record || null);
+                  setSelectedInvestigation(null);
+                  setShowInvestigationModal(true);
+                }}
+                onEditInvestigation={(inv) => {
+                  setSelectedInvestigation(inv);
+                  const matchingRecord = records.find(r => r.id === inv.recordId) || null;
+                  setInvestigationTargetRecord(matchingRecord);
+                  setShowInvestigationModal(true);
+                }}
+                onDeleteInvestigation={async (id) => {
+                  if (confirm("¿Está seguro de eliminar esta investigación de forma permanente?")) {
+                    await firebaseService.deleteInvestigation(id);
+                  }
+                }}
               />
             )}
           </>
@@ -499,10 +598,36 @@ export default function App() {
           onClose={() => setShowUserModal(null)}
         />
       )}
+
+      {showInvestigationModal && (
+        <AccidentInvestigationModal
+          company={currentCompany || null}
+          records={records}
+          initialRecord={investigationTargetRecord}
+          existingInvestigation={selectedInvestigation}
+          onSave={async (invData, existingId) => {
+            const cid = isAdmin ? selectedCompanyId : profile?.companyId;
+            if (!cid) return;
+            try {
+              if (existingId) {
+                await firebaseService.updateInvestigation(existingId, invData);
+              } else {
+                await firebaseService.addInvestigation({ ...invData, companyId: cid });
+              }
+              setShowInvestigationModal(false);
+              setSelectedInvestigation(null);
+              setInvestigationTargetRecord(null);
+            } catch (err: any) {
+              alert("Error al guardar la investigación: " + (err?.message || "Error desconocido"));
+            }
+          }}
+          onClose={() => {
+            setShowInvestigationModal(false);
+            setSelectedInvestigation(null);
+            setInvestigationTargetRecord(null);
+          }}
+        />
+      )}
     </div>
   );
-}
-
-function UserPlus({ size, className }: { size: number, className?: string }) {
-  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="17" y1="11" x2="23" y2="11"/></svg>;
 }

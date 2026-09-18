@@ -16,17 +16,28 @@ import {
   AreaChart,
   Area
 } from 'recharts';
-import { TrendingUp, Activity, AlertTriangle, HeartPulse, Stethoscope, Clock, Calendar, ChevronDown, Check, Filter } from 'lucide-react';
+import { TrendingUp, Activity, AlertTriangle, HeartPulse, Stethoscope, Clock, Calendar, ChevronDown, Check, Filter, Users, AlertCircle, Edit3, HelpCircle } from 'lucide-react';
 
 interface Props {
   data: MonthlyIndicator[];
   yearlyData: YearlyIndicator[];
+  selectedMonth?: string;
+  onMonthChange?: (month: string) => void;
+  onUpdateEmployeeCount?: (month: string, count: number) => void;
 }
 
-export default function Dashboard({ data, yearlyData }: Props) {
+export default function Dashboard({ 
+  data, 
+  yearlyData, 
+  selectedMonth: externalSelectedMonth,
+  onMonthChange,
+  onUpdateEmployeeCount 
+}: Props) {
   const [selectedYears, setSelectedYears] = useState<string[]>([]);
   const [selectedIndicator, setSelectedIndicator] = useState<keyof YearlyIndicator>('frecuencia');
   const [showYearDropdown, setShowYearDropdown] = useState(false);
+  const [editingEmployees, setEditingEmployees] = useState(false);
+  const [tempEmployeeCount, setTempEmployeeCount] = useState<number>(0);
   const yearDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -34,7 +45,7 @@ export default function Dashboard({ data, yearlyData }: Props) {
     if (selectedYears.length === 0 && yearlyData.length > 0) {
       setSelectedYears(yearlyData.map(y => y.year));
     }
-  }, [yearlyData]); // Update when data changes
+  }, [yearlyData]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -74,15 +85,12 @@ export default function Dashboard({ data, yearlyData }: Props) {
     const current = format(new Date(), 'yyyy-MM');
     const currentData = data.find(d => d.month === current);
     
-    // If current month has some records or indicators, use it
     if (currentData && (currentData.frecuencia > 0 || currentData.severidad > 0 || currentData.accidentCount > 0)) {
       return current;
     }
     
-    // Otherwise, check if any other month in the data has any indicator data
     const nonZeroMonths = data.filter(d => d.frecuencia > 0 || d.severidad > 0 || d.accidentCount > 0);
     if (nonZeroMonths.length > 0) {
-      // Return the most recent month with data
       const sorted = [...nonZeroMonths].sort((a, b) => b.month.localeCompare(a.month));
       return sorted[0].month;
     }
@@ -90,14 +98,18 @@ export default function Dashboard({ data, yearlyData }: Props) {
     return current;
   };
 
-  const [selectedMonth, setSelectedMonth] = useState<string>(getDefaultMonth);
+  const [internalSelectedMonth, setInternalSelectedMonth] = useState<string>(getDefaultMonth);
+  const activeMonth = externalSelectedMonth || internalSelectedMonth;
 
-  // Sync selectedMonth if data changes and current state is no longer optimal
-  useEffect(() => {
-    setSelectedMonth(getDefaultMonth());
-  }, [data]);
+  const handleSelectMonth = (m: string) => {
+    setInternalSelectedMonth(m);
+    if (onMonthChange) {
+      onMonthChange(m);
+    }
+  };
 
-  const latest = data.find(d => d.month === selectedMonth) || data.find(d => d.month === format(new Date(), 'yyyy-MM')) || data[data.length - 1] || { 
+  const latest = data.find(d => d.month === activeMonth) || data.find(d => d.month === format(new Date(), 'yyyy-MM')) || data[data.length - 1] || { 
+    month: activeMonth,
     frecuencia: 0, 
     severidad: 0, 
     mortalidad: 0, 
@@ -105,7 +117,22 @@ export default function Dashboard({ data, yearlyData }: Props) {
     incidenciaEL: 0, 
     ausentismoMedica: 0,
     ausentismoComun: 0,
+    accidentCount: 0,
+    incidentCount: 0,
+    absenteeismCount: 0,
+    lostDaysTotal: 0,
     employeeCount: 0 
+  };
+
+  useEffect(() => {
+    setTempEmployeeCount(latest.employeeCount || 0);
+  }, [latest.employeeCount]);
+
+  const handleSaveEmployees = () => {
+    if (onUpdateEmployeeCount && tempEmployeeCount >= 0) {
+      onUpdateEmployeeCount(activeMonth, tempEmployeeCount);
+    }
+    setEditingEmployees(false);
   };
 
   const formatMonth = (monthStr: string) => {
@@ -125,28 +152,47 @@ export default function Dashboard({ data, yearlyData }: Props) {
     }
   };
 
+  // Explanation strings according to official formula
+  const frequencyFormula = latest.employeeCount > 0
+    ? `(${latest.accidentCount} AT × 100) / ${latest.employeeCount} trabajadores = ${latest.frecuencia.toFixed(2)}`
+    : `Requiere configurar trabajadores del mes (Fórmula: Nº AT * 100 / Nº Trabajadores)`;
+
+  // Recover month-specific lost days from formula
+  const lostDaysCalc = latest.employeeCount > 0 
+    ? Math.round((latest.severidad * latest.employeeCount) / 100)
+    : 0;
+
+  const severityFormula = latest.employeeCount > 0
+    ? `(${lostDaysCalc} días en mes × 100) / ${latest.employeeCount} trab. = ${latest.severidad.toFixed(2)}`
+    : `Requiere configurar trabajadores del mes`;
+
   return (
     <div className="space-y-12">
       {/* Primary Indicators Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {/* Accidentalidad Section */}
         <div className="lg:col-span-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-            <h4 className="text-xs font-bold text-gray-400 uppercase tracking-[0.2em]">Indicadores de Accidentalidad</h4>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+            <div>
+              <h4 className="text-xs font-black text-gray-800 uppercase tracking-[0.2em] flex items-center gap-2">
+                Indicadores de Accidentalidad Laboral
+                <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold lowercase">
+                  res. 0312/2019
+                </span>
+              </h4>
+              <p className="text-[11px] text-gray-500 mt-0.5">
+                Cálculo legal reglamentario sobre la población trabajadora y días perdidos cronológicos.
+              </p>
+            </div>
             
-            {/* Month Filter Selector */}
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-black text-gray-400 uppercase tracking-wider">Período Mensual:</span>
-              <div className="relative">
+            {/* Month Filter Selector & Worker Config in Month */}
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2 bg-white px-3 py-1.5 border border-gray-200 rounded-xl shadow-xs">
+                <span className="text-xs font-black text-gray-500 uppercase tracking-wider">Período:</span>
                 <select
-                  value={selectedMonth}
-                  onChange={(e) => setSelectedMonth(e.target.value)}
-                  className="appearance-none flex items-center pl-4 pr-10 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-semibold text-gray-750 hover:border-emerald-500 transition-all shadow-sm outline-none min-w-[180px]"
-                  style={{ 
-                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`, 
-                    backgroundRepeat: 'no-repeat', 
-                    backgroundPosition: 'right 12px center' 
-                  }}
+                  value={activeMonth}
+                  onChange={(e) => handleSelectMonth(e.target.value)}
+                  className="bg-transparent text-xs font-bold text-gray-900 outline-none cursor-pointer"
                 >
                   {data.map(d => (
                     <option key={d.month} value={d.month}>
@@ -155,8 +201,74 @@ export default function Dashboard({ data, yearlyData }: Props) {
                   ))}
                 </select>
               </div>
+
+              {/* Workers in this specific month badge / editor */}
+              <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl text-emerald-950">
+                <Users size={14} className="text-emerald-700" />
+                <span className="text-xs font-bold text-emerald-800">Trabajadores mes:</span>
+                {editingEmployees ? (
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="0"
+                      className="w-14 px-1.5 py-0.5 bg-white border border-emerald-500 rounded text-xs font-black outline-none"
+                      value={tempEmployeeCount}
+                      onChange={e => setTempEmployeeCount(parseInt(e.target.value) || 0)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') handleSaveEmployees();
+                        if (e.key === 'Escape') setEditingEmployees(false);
+                      }}
+                      autoFocus
+                    />
+                    <button
+                      onClick={handleSaveEmployees}
+                      className="px-2 py-0.5 bg-emerald-600 text-white rounded text-[10px] font-bold"
+                    >
+                      OK
+                    </button>
+                  </div>
+                ) : (
+                  <div 
+                    onClick={() => {
+                      if (onUpdateEmployeeCount) setEditingEmployees(true);
+                    }}
+                    className="flex items-center gap-1.5 cursor-pointer group"
+                    title="Haga clic para modificar el número de trabajadores en este mes"
+                  >
+                    <span className="text-xs font-black text-emerald-900">
+                      {latest.employeeCount > 0 ? latest.employeeCount : (
+                        <span className="text-amber-700 font-bold underline">Sin asignar (0)</span>
+                      )}
+                    </span>
+                    {onUpdateEmployeeCount && (
+                      <Edit3 size={12} className="text-emerald-600 opacity-60 group-hover:opacity-100" />
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
+
+          {/* Alert if workers is 0 */}
+          {latest.employeeCount === 0 && (
+            <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-center justify-between gap-3 text-amber-900">
+              <div className="flex items-center gap-2.5 text-xs font-bold">
+                <AlertCircle size={18} className="text-amber-600 shrink-0" />
+                <span>
+                  Para calcular con exactitud los Índices de Frecuencia y Severidad de <strong>{formatMonthFull(activeMonth)}</strong>, ingresa el número de trabajadores de la empresa en este mes (Fórmula: Nº AT * 100 / Trabajadores).
+                </span>
+              </div>
+              {onUpdateEmployeeCount && (
+                <button
+                  onClick={() => setEditingEmployees(true)}
+                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-black text-xs rounded-xl shrink-0 transition-colors"
+                >
+                  Asignar Trabajadores
+                </button>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <IndicatorCard 
               title="Frecuencia AT" 
@@ -164,7 +276,9 @@ export default function Dashboard({ data, yearlyData }: Props) {
               unit="" 
               icon={Activity} 
               color="emerald" 
-              desc="Accidentes por cada 100 trabajadores"
+              desc="Accidentes por cada 100 trabajadores en el mes"
+              formula={frequencyFormula}
+              hasWorkers={latest.employeeCount > 0}
             />
             <IndicatorCard 
               title="Severidad AT" 
@@ -172,7 +286,9 @@ export default function Dashboard({ data, yearlyData }: Props) {
               unit="" 
               icon={TrendingUp} 
               color="amber" 
-              desc="Días perdidos por cada 100 trabajadores"
+              desc="Días perdidos asignados cronológicamente por cada 100 trabajadores"
+              formula={severityFormula}
+              hasWorkers={latest.employeeCount > 0}
             />
             <IndicatorCard 
               title="Mortalidad AT" 
@@ -180,14 +296,17 @@ export default function Dashboard({ data, yearlyData }: Props) {
               unit="" 
               icon={AlertTriangle} 
               color="red" 
-              desc="Accidentes por cada 100.000 trabajadores"
+              desc="Accidentes mortales por cada 100.000 trabajadores"
+              hasWorkers={latest.employeeCount > 0}
             />
           </div>
         </div>
 
         {/* Enfermedad & Ausentismo Section */}
         <div className="lg:col-span-3">
-          <h4 className="text-xs font-bold text-gray-400 uppercase tracking-[0.2em] mb-4">Enfermedad Laboral y Ausentismo</h4>
+          <h4 className="text-xs font-black text-gray-800 uppercase tracking-[0.2em] mb-4">
+            Enfermedad Laboral y Ausentismo (Res. 0312/2019)
+          </h4>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             <IndicatorCard 
               title="Prevalencia EL" 
@@ -195,7 +314,8 @@ export default function Dashboard({ data, yearlyData }: Props) {
               unit="" 
               icon={HeartPulse} 
               color="rose" 
-              desc="Casos por cada 100.000 trabajadores"
+              desc="Casos antiguos y nuevos por cada 100.000 trabajadores"
+              hasWorkers={latest.employeeCount > 0}
             />
             <IndicatorCard 
               title="Incidencia EL" 
@@ -203,7 +323,8 @@ export default function Dashboard({ data, yearlyData }: Props) {
               unit="" 
               icon={Stethoscope} 
               color="indigo" 
-              desc="Casos nuevos por cada 100.000"
+              desc="Casos nuevos en el período por cada 100.000 trabajadores"
+              hasWorkers={latest.employeeCount > 0}
             />
             <IndicatorCard 
               title="Ausentismo Médico" 
@@ -211,7 +332,8 @@ export default function Dashboard({ data, yearlyData }: Props) {
               unit="%" 
               icon={Clock} 
               color="blue" 
-              desc="Días ausencia vs programados"
+              desc="Días de ausencia médica vs días de trabajo programados"
+              hasWorkers={latest.employeeCount > 0}
             />
             <IndicatorCard 
               title="Origen Común" 
@@ -219,7 +341,8 @@ export default function Dashboard({ data, yearlyData }: Props) {
               unit="%" 
               icon={Activity} 
               color="gray" 
-              desc="Ausentismo de origen común"
+              desc="Porcentaje de ausentismo por causas médicas de origen común"
+              hasWorkers={latest.employeeCount > 0}
             />
           </div>
         </div>
@@ -227,10 +350,10 @@ export default function Dashboard({ data, yearlyData }: Props) {
 
       {/* Monthly Trends Section */}
       <div className="space-y-6">
-        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-[0.2em]">Tendencias Mensuales</h4>
+        <h4 className="text-xs font-black text-gray-800 uppercase tracking-[0.2em]">Tendencias Mensuales de Accidentalidad</h4>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Frecuencia Chart */}
-          <ChartContainer title="Frecuencia Mensual" icon={Activity} color="emerald">
+          <ChartContainer title="Frecuencia Mensual de Accidentes" icon={Activity} color="emerald">
             <AreaChart data={data}>
               <defs>
                 <linearGradient id="colorFreq" x1="0" y1="0" x2="0" y2="1">
@@ -247,7 +370,7 @@ export default function Dashboard({ data, yearlyData }: Props) {
           </ChartContainer>
 
           {/* Severidad Chart */}
-          <ChartContainer title="Severidad Mensual" icon={TrendingUp} color="amber">
+          <ChartContainer title="Severidad Mensual (Días cronológicos)" icon={TrendingUp} color="amber">
             <AreaChart data={data}>
               <defs>
                 <linearGradient id="colorSev" x1="0" y1="0" x2="0" y2="1">
@@ -262,248 +385,118 @@ export default function Dashboard({ data, yearlyData }: Props) {
               <Area type="monotone" dataKey="severidad" name="Severidad" stroke="#f59e0b" fillOpacity={1} fill="url(#colorSev)" strokeWidth={3} />
             </AreaChart>
           </ChartContainer>
-
-          {/* Incidencia EL */}
-          <ChartContainer title="Incidencia EL" icon={Stethoscope} color="indigo">
-            <BarChart data={data}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-              <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 11 }} dy={10} tickFormatter={formatMonth} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 11 }} />
-              <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }} />
-              <Bar dataKey="incidenciaEL" name="Incidencia" fill="#6366f1" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ChartContainer>
-
-          {/* Prevalencia EL */}
-          <ChartContainer title="Prevalencia EL" icon={HeartPulse} color="rose">
-            <BarChart data={data}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-              <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 11 }} dy={10} tickFormatter={formatMonth} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 11 }} />
-              <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }} />
-              <Bar dataKey="prevalenciaEL" name="Prevalencia" fill="#f43f5e" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ChartContainer>
-
-          {/* Medical Absenteeism Total */}
-          <ChartContainer title="Ausentismo Médico Total" icon={Clock} color="blue">
-            <BarChart data={data}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-              <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 11 }} dy={10} tickFormatter={formatMonth} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 11 }} />
-              <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }} />
-              <Bar dataKey="ausentismoMedica" name="Total (%)" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ChartContainer>
-
-          {/* Medical Absenteeism Common */}
-          <ChartContainer title="Ausentismo Origen Común" icon={Activity} color="gray">
-            <BarChart data={data}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-              <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 11 }} dy={10} tickFormatter={formatMonth} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 11 }} />
-              <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }} />
-              <Bar dataKey="ausentismoComun" name="Origen Común (%)" fill="#94a3b8" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ChartContainer>
         </div>
       </div>
 
-      {/* Yearly Statistics Section */}
-      <div className="space-y-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <h4 className="text-xs font-bold text-gray-400 uppercase tracking-[0.2em]">Estadísticas Anuales</h4>
-          
+      {/* Multiannual Comparative Section */}
+      <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h4 className="text-xs font-black text-gray-800 uppercase tracking-[0.2em]">
+              Análisis Comparativo Multianual
+            </h4>
+            <p className="text-xs text-gray-400 mt-1">Evolución anual de indicadores según los estándares mínimos</p>
+          </div>
+
           <div className="flex flex-wrap items-center gap-3">
-            {/* Year Multi-select Dropdown */}
+            {/* Indicator Selector */}
+            <div className="flex items-center gap-1 bg-gray-50 p-1.5 rounded-2xl border border-gray-100">
+              {indicators.map(ind => (
+                <button
+                  key={ind.key}
+                  onClick={() => setSelectedIndicator(ind.key)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    selectedIndicator === ind.key 
+                      ? 'bg-white text-gray-900 shadow-xs' 
+                      : 'text-gray-400 hover:text-gray-600'
+                  }`}
+                >
+                  {ind.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Year Multi-Select Dropdown */}
             <div className="relative" ref={yearDropdownRef}>
               <button
+                type="button"
                 onClick={() => setShowYearDropdown(!showYearDropdown)}
-                className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:border-emerald-500 transition-all shadow-sm"
+                className="px-4 py-2 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl text-xs font-bold text-gray-700 flex items-center gap-2 transition-all"
               >
-                <Calendar size={16} className="text-emerald-600" />
-                <span>{selectedYears.length === 0 ? "Seleccionar Años" : `${selectedYears.length} Años`}</span>
-                <ChevronDown size={16} className="text-gray-400" />
+                <Calendar size={14} className="text-gray-500" />
+                <span>Años ({selectedYears.length})</span>
+                <ChevronDown size={14} className={`text-gray-400 transition-transform ${showYearDropdown ? 'rotate-180' : ''}`} />
               </button>
 
               {showYearDropdown && (
-                <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-100 rounded-2xl shadow-xl z-50 py-2">
-                  <div className="max-h-60 overflow-y-auto px-1">
-                    {yearlyData.map(year => (
+                <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-100 rounded-2xl shadow-xl z-20 p-2 space-y-1">
+                  <div className="p-2 border-b border-gray-50 flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Seleccionar</span>
+                    <button
+                      onClick={() => setSelectedYears(yearlyData.map(y => y.year))}
+                      className="text-[10px] text-emerald-600 font-bold hover:underline"
+                    >
+                      Todos
+                    </button>
+                  </div>
+                  <div className="max-h-48 overflow-y-auto space-y-1">
+                    {yearlyData.map(item => (
                       <button
-                        key={year.year}
-                        onClick={() => toggleYear(year.year)}
-                        className="flex items-center justify-between w-full px-4 py-2.5 hover:bg-gray-50 rounded-xl transition-colors text-sm font-medium text-gray-700"
+                        key={item.year}
+                        onClick={() => toggleYear(item.year)}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors ${
+                          selectedYears.includes(item.year)
+                            ? 'bg-emerald-50 text-emerald-700 font-bold'
+                            : 'text-gray-600 hover:bg-gray-50'
+                        }`}
                       >
-                        <span>Año {year.year}</span>
-                        {selectedYears.includes(year.year) && <Check size={16} className="text-emerald-600" />}
+                        <span>{item.year}</span>
+                        {selectedYears.includes(item.year) && <Check size={14} className="text-emerald-600" />}
                       </button>
                     ))}
                   </div>
-                  {yearlyData.length === 0 && (
-                    <p className="px-4 py-2 text-xs text-gray-400 italic text-center">No hay datos</p>
-                  )}
                 </div>
               )}
-            </div>
-
-            {/* Indicator Dropdown */}
-            <div className="relative">
-              <select
-                value={selectedIndicator}
-                onChange={(e) => setSelectedIndicator(e.target.value as keyof YearlyIndicator)}
-                className="appearance-none flex items-center pl-10 pr-10 py-2 bg-white border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:border-emerald-500 transition-all shadow-sm outline-none min-w-[180px]"
-                style={{ 
-                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`, 
-                  backgroundRepeat: 'no-repeat', 
-                  backgroundPosition: 'right 12px center' 
-                }}
-              >
-                {indicators.map(ind => (
-                  <option key={ind.key} value={ind.key}>{ind.label}</option>
-                ))}
-              </select>
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <activeIndicator.icon size={16} className={
-                  selectedIndicator === 'frecuencia' ? 'text-emerald-600' : 
-                  selectedIndicator === 'severidad' ? 'text-amber-600' : 
-                  selectedIndicator === 'mortalidad' ? 'text-red-600' :
-                  selectedIndicator === 'incidenciaEL' ? 'text-indigo-600' :
-                  selectedIndicator === 'prevalenciaEL' ? 'text-rose-600' :
-                  'text-blue-600'
-                } />
-              </div>
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-1 space-y-4">
-            {filteredYearlyData.length > 0 ? (
-              filteredYearlyData.map(year => (
-                <div key={year.year} className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:border-emerald-100 transition-colors">
-                  <div className="flex justify-between items-center mb-4">
-                    <span className="text-lg font-extrabold text-gray-900">Año {year.year}</span>
-                    <Calendar className="text-emerald-600" size={20} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className={selectedIndicator === 'frecuencia' ? 'ring-2 ring-emerald-50 ring-offset-2 rounded-xl p-1' : ''}>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase">Frecuencia</p>
-                      <p className="text-lg font-bold text-emerald-600">{year.frecuencia.toFixed(2)}</p>
-                    </div>
-                    <div className={selectedIndicator === 'severidad' ? 'ring-2 ring-amber-50 ring-offset-2 rounded-xl p-1' : ''}>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase">Severidad</p>
-                      <p className="text-lg font-bold text-amber-600">{year.severidad.toFixed(2)}</p>
-                    </div>
-                    {selectedIndicator === 'mortalidad' && (
-                      <div className="col-span-2 mt-2 ring-2 ring-red-50 ring-offset-2 rounded-xl p-1">
-                        <p className="text-[10px] font-bold text-gray-400 uppercase">Mortalidad</p>
-                        <p className="text-lg font-bold text-red-600">{year.mortalidad.toFixed(2)}</p>
-                      </div>
-                    )}
-                    {selectedIndicator === 'incidenciaEL' && (
-                      <div className="col-span-2 mt-2 ring-2 ring-indigo-50 ring-offset-2 rounded-xl p-1">
-                        <p className="text-[10px] font-bold text-gray-400 uppercase">Incidencia EL</p>
-                        <p className="text-lg font-bold text-indigo-600">{year.incidenciaEL.toFixed(2)}</p>
-                      </div>
-                    )}
-                    {selectedIndicator === 'prevalenciaEL' && (
-                      <div className="col-span-2 mt-2 ring-2 ring-rose-50 ring-offset-2 rounded-xl p-1">
-                        <p className="text-[10px] font-bold text-gray-400 uppercase">Prevalencia EL</p>
-                        <p className="text-lg font-bold text-rose-600">{year.prevalenciaEL.toFixed(2)}</p>
-                      </div>
-                    )}
-                    {selectedIndicator === 'ausentismoMedica' && (
-                      <div className="col-span-2 mt-2 ring-2 ring-blue-50 ring-offset-2 rounded-xl p-1">
-                        <p className="text-[10px] font-bold text-gray-400 uppercase">Ausentismo Médico</p>
-                        <p className="text-lg font-bold text-blue-600">{year.ausentismoMedica.toFixed(2)}%</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="bg-white p-12 rounded-3xl border border-dashed border-gray-200 text-center flex flex-col items-center gap-3">
-                <Filter className="text-gray-300" size={40} />
-                <p className="text-gray-500 font-medium text-sm">Selecciona uno o más años para ver el desglose</p>
-              </div>
-            )}
-          </div>
-          
-          <div className="lg:col-span-2">
-            <ChartContainer 
-              title={`Tendencia Anual: ${activeIndicator.label}`} 
-              icon={activeIndicator.icon} 
-              color={
-                selectedIndicator === 'frecuencia' ? 'emerald' : 
-                selectedIndicator === 'severidad' ? 'amber' : 
-                selectedIndicator === 'mortalidad' ? 'red' :
-                selectedIndicator === 'incidenciaEL' ? 'indigo' :
-                selectedIndicator === 'prevalenciaEL' ? 'rose' :
-                'blue'
-              }
-            >
-              {filteredYearlyData.length > 0 ? (
-                <LineChart data={filteredYearlyData}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                  <XAxis dataKey="year" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 11 }} dy={10} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 11 }} />
-                  <Tooltip 
-                    contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
-                    formatter={(value: number) => {
-                      const isPercentage = ['ausentismoMedica', 'ausentismoComun'].includes(selectedIndicator);
-                      return [`${value.toFixed(2)}${isPercentage ? '%' : ''}`, activeIndicator.label];
-                    }}
-                  />
-                  <Legend verticalAlign="top" height={36} />
-                  <Line 
-                    type="monotone" 
-                    dataKey={selectedIndicator} 
-                    name={activeIndicator.label} 
-                    stroke={activeIndicator.color} 
-                    strokeWidth={4} 
-                    dot={{ r: 6, stroke: activeIndicator.color, strokeWidth: 2, fill: '#fff' }} 
-                    activeDot={{ r: 8 }}
-                  />
-                </LineChart>
-              ) : (
-                <div className="h-full w-full flex items-center justify-center text-gray-400 text-sm italic">
-                  No hay datos para mostrar con los filtros seleccionados
-                </div>
-              )}
-            </ChartContainer>
-          </div>
+        {/* Comparative Chart */}
+        <div className="h-80 w-full pt-4">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={filteredYearlyData}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+              <XAxis dataKey="year" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 12, fontWeight: 600 }} dy={10} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 11 }} />
+              <Tooltip 
+                contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
+                formatter={(val: any) => [Number(val).toFixed(2), activeIndicator.label]}
+              />
+              <Bar 
+                dataKey={selectedIndicator} 
+                name={activeIndicator.label}
+                fill={activeIndicator.color} 
+                radius={[12, 12, 0, 0]} 
+                maxBarSize={60}
+              />
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       </div>
     </div>
   );
 }
 
-function ChartContainer({ title, icon: Icon, color, children }: any) {
-  const colorClasses: any = {
-    emerald: 'text-emerald-600',
-    amber: 'text-amber-600',
-    rose: 'text-rose-600',
-    blue: 'text-blue-600',
-    indigo: 'text-indigo-600',
-  };
-
-  return (
-    <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
-      <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-        <Icon size={20} className={colorClasses[color]} />
-        {title}
-      </h3>
-      <div className="h-[300px] w-full">
-        <ResponsiveContainer width="100%" height="100%">
-          {children}
-        </ResponsiveContainer>
-      </div>
-    </div>
-  );
-}
-
-function IndicatorCard({ title, value, unit, icon: Icon, color, desc }: any) {
+function IndicatorCard({ 
+  title, 
+  value, 
+  unit, 
+  icon: Icon, 
+  color, 
+  desc, 
+  formula,
+  hasWorkers = true
+}: any) {
   const colorClasses: any = {
     emerald: 'bg-emerald-50 text-emerald-600',
     amber: 'bg-amber-50 text-amber-600',
@@ -515,18 +508,50 @@ function IndicatorCard({ title, value, unit, icon: Icon, color, desc }: any) {
   };
 
   return (
-    <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-      <div className="flex items-center gap-4 mb-4">
-        <div className={`p-3 rounded-2xl ${colorClasses[color]}`}>
-          <Icon size={22} />
+    <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow flex flex-col justify-between">
+      <div>
+        <div className="flex items-center gap-4 mb-4">
+          <div className={`p-3 rounded-2xl ${colorClasses[color]}`}>
+            <Icon size={22} />
+          </div>
+          <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">{title}</span>
         </div>
-        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">{title}</span>
+        <div className="flex items-baseline gap-1">
+          <div className="text-3xl font-black text-gray-900">
+            {hasWorkers ? Number(value || 0).toFixed(value > 100 ? 0 : 2) : '0.00'}
+          </div>
+          <span className="text-sm font-bold text-gray-400">{unit}</span>
+        </div>
+        <p className="text-[11px] text-gray-400 mt-2 font-medium leading-relaxed">{desc}</p>
       </div>
-      <div className="flex items-baseline gap-1">
-        <div className="text-3xl font-extrabold text-gray-900">{value.toFixed(value > 100 ? 0 : 2)}</div>
-        <span className="text-sm font-bold text-gray-400">{unit}</span>
+
+      {formula && (
+        <div className="mt-4 pt-3 border-t border-gray-50 text-[10px] text-gray-500 font-mono bg-gray-50/60 p-2 rounded-xl">
+          <span className="font-bold text-gray-700 block text-[9px] uppercase tracking-wider">Detalle del cálculo:</span>
+          <span className="text-emerald-700 font-bold">{formula}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ChartContainer({ title, icon: Icon, color, children }: any) {
+  const colorClasses: any = {
+    emerald: 'text-emerald-600',
+    amber: 'text-amber-600',
+  };
+
+  return (
+    <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm space-y-4">
+      <div className="flex items-center gap-2">
+        <Icon size={18} className={colorClasses[color]} />
+        <h5 className="text-xs font-bold text-gray-900 uppercase tracking-wider">{title}</h5>
       </div>
-      <p className="text-[11px] text-gray-400 mt-2 font-medium">{desc}</p>
+      <div className="h-64 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          {children}
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }

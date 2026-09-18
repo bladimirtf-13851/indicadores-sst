@@ -52,6 +52,19 @@
         "programmedDays": { "type": "number" }
       },
       "required": ["companyId", "month", "employeeCount", "programmedDays"]
+    },
+    "Investigation": {
+      "title": "Investigation",
+      "description": "Accident Investigation compliant with Colombian Resolution 1401/2007",
+      "type": "object",
+      "properties": {
+        "companyId": { "type": "string" },
+        "recordId": { "type": "string" },
+        "employeeName": { "type": "string" },
+        "investigationDate": { "type": "string" },
+        "severity": { "type": "string", "enum": ["Leve", "Grave", "Mortal"] }
+      },
+      "required": ["companyId", "recordId", "employeeName"]
     }
   },
   "firestore": {
@@ -66,6 +79,10 @@
     "records/{recordId}": {
       "schema": "EventRecord",
       "description": "Safety events"
+    },
+    "investigations/{investigationId}": {
+      "schema": "Investigation",
+      "description": "Accident investigations per Resolution 1401/2007"
     },
     "configs/{configId}": {
       "schema": "MonthlyConfig",

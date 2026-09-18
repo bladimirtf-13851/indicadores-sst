@@ -59,9 +59,177 @@ export interface EventRecord {
   isNewCase?: boolean;
   incapacityStartDate?: string;
   incapacityEndDate?: string;
+  
+  // FURAT - Datos Entidades y Seguridad Social
+  eps?: string;
+  epsCode?: string;
+  arl?: string;
+  arlCode?: string;
+  afp?: string;
+  afpCode?: string;
+  
+  // FURAT - Centro de trabajo y Sede
+  sameWorkCenter?: boolean;
+  workCenterName?: string;
+  workCenterActivity?: string;
+  workCenterAddress?: string;
+  workCenterDepartment?: string;
+  workCenterMunicipality?: string;
+  workCenterZone?: 'U' | 'R';
+
+  // FURAT - Datos detallados del trabajador
+  firstSurname?: string;
+  secondSurname?: string;
+  firstName?: string;
+  secondName?: string;
+  idType?: 'CC' | 'CE' | 'TI' | 'PA' | 'PEP' | 'PPT';
+  birthDate?: string;
+  gender?: 'M' | 'F';
+  employeeAddress?: string;
+  employeePhone?: string;
+  employeeDepartment?: string;
+  employeeMunicipality?: string;
+  employeeZone?: 'U' | 'R';
+  habitualOccupation?: string;
+  occupationCode?: string;
+  hireDate?: string;
+  monthlySalary?: number | string;
+  workdaySchedule?: 'Diurna' | 'Nocturna' | 'Mixta' | 'Por turnos';
+
+  // FURAT - Datos detallados del accidente
+  weekDay?: 'Lunes' | 'Martes' | 'Miércoles' | 'Jueves' | 'Viernes' | 'Sábado' | 'Domingo';
+  doingHabitualWork?: boolean;
+  nonHabitualWorkDetail?: string;
+  workedTimeBeforeAccident?: string;
+  accidentCircumstance?: 'Propios del trabajo' | 'Violencia' | 'Tránsito' | 'Deportivo' | 'Recreativo o cultural';
+  causedDeath?: boolean;
+  accidentLocationType?: 'Dentro de la empresa' | 'Fuera de la empresa';
+  accidentDepartment?: string;
+  accidentMunicipality?: string;
+  accidentZone?: 'U' | 'R';
+
+  // FURAT - Testigos en el reporte
+  hasWitnesses?: boolean;
+  witnesses?: Array<{
+    name: string;
+    idType: string;
+    idNumber: string;
+    position: string;
+  }>;
+
+  // FURAT - Responsable del informe
+  reportResponsibleName?: string;
+  reportResponsiblePosition?: string;
+  reportResponsibleIdType?: string;
+  reportResponsibleIdNumber?: string;
+  reportDate?: string;
+
+  // Campos heredados (ahora gestionados en el módulo de investigación)
   potentialCauses?: string;
   correctiveActions?: string;
   correctiveActionsList?: CorrectiveActionItem[];
+}
+
+// -------------------------------------------------------------
+// Tipos para el Módulo de Investigación de Accidentes (Res. 1401/2007)
+// -------------------------------------------------------------
+
+export interface InvestigationWitness {
+  id: string;
+  name: string;
+  idType: string;
+  idNumber: string;
+  position: string;
+  testimony: string;
+}
+
+export interface InvestigationActionItem {
+  id: string;
+  description: string;
+  hierarchy: 'Fuente' | 'Medio' | 'Individuo';
+  responsibleName: string;
+  responsiblePosition: string;
+  executionDate: string;
+  followUpDate: string;
+  status: 'Abierto' | 'En Proceso' | 'Implementado';
+  verificationNotes?: string;
+}
+
+export interface InvestigationEvidence {
+  id: string;
+  title: string;
+  description: string;
+  dataUrl: string; // base64
+  date?: string;
+}
+
+export interface CommitteeSignature {
+  name: string;
+  idNumber: string;
+  position: string;
+  licenseNumber?: string; // Para responsable SST
+  signatureDataUrl?: string; // Firma dibujada / cargada
+  signedDate?: string;
+}
+
+export interface AccidentInvestigation {
+  id: string;
+  companyId: string;
+  recordId: string; // ID del accidente reportado
+  investigationDate: string;
+  investigationPlace: string;
+  severity: 'Leve' | 'Grave' | 'Mortal';
+  daysLostActual: number;
+
+  // Resumen del accidentado (traído del reporte)
+  employeeName: string;
+  idType: string;
+  idNumber: string;
+  position: string;
+  department: string;
+  seniority?: string;
+  habitualOccupation?: string;
+  accidentDate: string;
+  accidentTime?: string;
+  injuryDescription?: string;
+  bodyPart?: string;
+
+  // 1. Cronología y descripción detallada (Res. 1401)
+  workProcess: string; // Tarea o proceso que se ejecutaba
+  priorEvents: string; // Hechos previos al accidente
+  eventDescription: string; // Descripción detallada de cómo ocurrió
+  afterEvents: string; // Hechos posteriores y atención inmediata
+
+  // 2. Testigos presenciales
+  hasWitnesses: boolean;
+  witnesses: InvestigationWitness[];
+
+  // 3. Árbol de Causas
+  lossDescription: string; // Consecuencia / Suceso de pérdida (raíz)
+  immediateActs: string[]; // Actos inseguros / subestándar
+  immediateConditions: string[]; // Condiciones inseguras / subestándar
+  basicPersonalFactors: string[]; // Factores personales
+  basicWorkFactors: string[]; // Factores de trabajo
+
+  // 4. Plan de Acción (Medidas de Intervención)
+  actionPlan: InvestigationActionItem[];
+
+  // 5. Registro Fotográfico / Evidencias
+  evidences: InvestigationEvidence[];
+
+  // 6. Comentarios y Conclusiones del Área de SST
+  sstComments: string;
+
+  // 7. Firmas de Responsables (Res. 1401/2007)
+  sstLeader: CommitteeSignature; // Responsable SG-SST (con licencia SST)
+  copasstRep: CommitteeSignature; // Representante Copasst o Vigía
+  immediateBoss: CommitteeSignature; // Jefe Inmediato
+  technicalSupport: CommitteeSignature; // Apoyo Técnico / Especialista
+  legalRepApproval: CommitteeSignature; // Aprobación Representante Legal
+
+  status: 'Borrador' | 'Finalizada';
+  createdAt: string;
+  updatedAt: string;
 }
 
 export const FORM_OPTIONS = {

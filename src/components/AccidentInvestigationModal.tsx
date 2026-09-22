@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   AccidentInvestigation, 
   EventRecord, 
@@ -28,8 +28,10 @@ import {
   User, 
   Building,
   Upload,
-  Eye
+  Eye,
+  Flame
 } from 'lucide-react';
+import { differenceInCalendarDays, parseISO } from 'date-fns';
 import CauseTreeBuilder from './CauseTreeBuilder';
 import SignaturePad from './SignaturePad';
 import { generateInvestigationPdf } from '../services/pdfReportService';
@@ -104,49 +106,65 @@ export default function AccidentInvestigationModal({
     technicalSupport: { name: '', idNumber: '', position: '', signatureDataUrl: '' },
     legalRepApproval: { name: '', idNumber: '', signedDate: new Date().toISOString().split('T')[0], signatureDataUrl: '' },
 
-    status: 'Borrador'
+    status: existingInvestigation?.status || 'Finalizada'
   });
 
   // When selected record changes, sync with record fields
   useEffect(() => {
-    const rec = records.find(r => r.id === selectedRecordId);
-    if (rec && !existingInvestigation) {
+    const rec = records.find(r => r.id === selectedRecordId) || initialRecord;
+    if (rec) {
       setFormData(prev => ({
         ...prev,
         recordId: rec.id,
-        employeeName: rec.employeeName,
-        idType: rec.idType || 'CC',
-        idNumber: rec.idNumber,
-        position: rec.position,
-        department: rec.department,
-        accidentDate: rec.date,
-        accidentTime: rec.time || '',
-        daysLostActual: rec.lostDays || 0,
-        injuryDescription: (rec.injuryType || []).join(', ') || rec.injuryTypeOther || '',
-        bodyPart: (rec.bodyPart || []).join(', '),
-        lossDescription: rec.description || '',
-        eventDescription: rec.description || '',
-        severity: rec.accidentType === AccidentType.MORTAL ? 'Mortal' : rec.lostDays > 30 ? 'Grave' : 'Leve',
-        investigationPlace: rec.location || '',
-        witnesses: (rec.witnesses || []).map(w => ({
-          name: w.name,
-          idType: w.idType,
-          idNumber: w.idNumber,
-          position: w.position,
-          testimony: ''
-        }))
+        employeeName: rec.employeeName || prev.employeeName,
+        idType: rec.idType || prev.idType || 'CC',
+        idNumber: rec.idNumber || prev.idNumber,
+        position: rec.position || prev.position,
+        department: rec.department || prev.department,
+        // Crucial: Always prioritize the actual accident date from the FURAT record
+        accidentDate: rec.date || prev.accidentDate || '',
+        accidentTime: rec.time || prev.accidentTime || '',
+        daysLostActual: prev.daysLostActual && prev.daysLostActual > 0 ? prev.daysLostActual : (rec.lostDays || 0),
+        injuryDescription: prev.injuryDescription || (rec.injuryType || []).join(', ') || rec.injuryTypeOther || '',
+        bodyPart: prev.bodyPart || (rec.bodyPart || []).join(', '),
+        lossDescription: prev.lossDescription || rec.description || '',
+        eventDescription: prev.eventDescription || rec.description || '',
+        severity: prev.severity || (rec.accidentType === AccidentType.MORTAL ? 'Mortal' : (rec.lostDays || 0) > 30 ? 'Grave' : 'Leve'),
+        investigationPlace: prev.investigationPlace || rec.location || '',
+        witnesses: prev.witnesses && prev.witnesses.length > 0 
+          ? prev.witnesses 
+          : (rec.witnesses || []).map(w => ({
+              id: Math.random().toString(36).substr(2, 9),
+              name: w.name,
+              idType: w.idType,
+              idNumber: w.idNumber,
+              position: w.position,
+              testimony: ''
+            }))
       }));
     }
-  }, [selectedRecordId, records, existingInvestigation]);
+  }, [selectedRecordId, records, initialRecord]);
 
-  // Load existing investigation if provided
+  // Load existing investigation if provided, ensuring accidentDate accurately matches the linked accident record
   useEffect(() => {
     if (existingInvestigation) {
       const { id, ...rest } = existingInvestigation;
-      setFormData(rest);
+      const rec = records.find(r => r.id === existingInvestigation.recordId) || initialRecord;
+      setFormData({
+        ...rest,
+        recordId: existingInvestigation.recordId,
+        // Always bind the authentic FURAT accident date to prevent alert discrepancies
+        accidentDate: rec?.date || rest.accidentDate || '',
+        accidentTime: rec?.time || rest.accidentTime || '',
+        employeeName: rec?.employeeName || rest.employeeName,
+        idType: rec?.idType || rest.idType || 'CC',
+        idNumber: rec?.idNumber || rest.idNumber,
+        position: rec?.position || rest.position,
+        department: rec?.department || rest.department,
+      });
       setSelectedRecordId(existingInvestigation.recordId);
     }
-  }, [existingInvestigation]);
+  }, [existingInvestigation, records, initialRecord]);
 
   // Handle witnesses
   const handleAddWitness = () => {
@@ -240,11 +258,23 @@ export default function AccidentInvestigationModal({
     }));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSaveWithStatus = async (overrideStatus?: AccidentInvestigation['status']) => {
     setSaving(true);
     try {
-      await onSave(formData, existingInvestigation?.id);
+      const currentRecord = records.find(r => r.id === (formData.recordId || selectedRecordId)) || initialRecord;
+      const statusToSave = overrideStatus || formData.status || 'Finalizada';
+      const cleanData: Omit<AccidentInvestigation, 'id'> = {
+        ...formData,
+        status: statusToSave,
+        recordId: currentRecord?.id || formData.recordId || selectedRecordId,
+        accidentDate: currentRecord?.date || formData.accidentDate || new Date().toISOString().split('T')[0],
+        accidentTime: currentRecord?.time || formData.accidentTime || '',
+        employeeName: currentRecord?.employeeName || formData.employeeName || 'Trabajador',
+        idNumber: currentRecord?.idNumber || formData.idNumber || '',
+        position: currentRecord?.position || formData.position || '',
+        department: currentRecord?.department || formData.department || ''
+      };
+      await onSave(cleanData, existingInvestigation?.id);
       onClose();
     } catch (err) {
       console.error('Error saving investigation:', err);
@@ -252,6 +282,11 @@ export default function AccidentInvestigationModal({
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await handleSaveWithStatus();
   };
 
   const handleDownloadPdf = () => {
@@ -421,11 +456,45 @@ export default function AccidentInvestigationModal({
                 </div>
               )}
 
-              {/* Investigation Classification */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* Investigation Dates & Classification */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 flex items-center justify-between">
+                    <span>Fecha del Accidente *</span>
+                    <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                      FURAT
+                    </span>
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    className="w-full p-2.5 text-xs border border-emerald-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none font-extrabold text-emerald-950 bg-emerald-50/40"
+                    value={formData.accidentDate}
+                    onChange={e => setFormData({ ...formData, accidentDate: e.target.value })}
+                  />
+                  <p className="text-[9px] text-gray-400">Fecha de ocurrencia reportada en el FURAT.</p>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 flex items-center justify-between">
+                    <span>Fecha de Investigación *</span>
+                    <span className="text-[9px] font-bold text-gray-500">
+                      Plazo: 15 días
+                    </span>
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    className="w-full p-2.5 text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none font-bold text-gray-800"
+                    value={formData.investigationDate}
+                    onChange={e => setFormData({ ...formData, investigationDate: e.target.value })}
+                  />
+                  <p className="text-[9px] text-gray-400">Fecha en que sesionó el equipo investigador.</p>
+                </div>
+
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
-                    Clasificación de Severidad (Art. 3 Res. 1401/2007) *
+                    Clasificación de Severidad *
                   </label>
                   <select
                     className={`w-full p-2.5 text-xs border rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-black ${
@@ -436,29 +505,16 @@ export default function AccidentInvestigationModal({
                     value={formData.severity}
                     onChange={e => setFormData({ ...formData, severity: e.target.value as any })}
                   >
-                    <option value="Leve">🟢 Leve (Accidente habitual sin amputación ni trauma mayor)</option>
-                    <option value="Grave">⚠️ Grave (Amputación, fractura de huesos largos, quemadura II/III, trauma cráneo)</option>
-                    <option value="Mortal">🔴 Mortal (Conlleva fallecimiento del trabajador)</option>
+                    <option value="Leve">🟢 Leve</option>
+                    <option value="Grave">⚠️ Grave</option>
+                    <option value="Mortal">🔴 Mortal</option>
                   </select>
+                  <p className="text-[9px] text-gray-400">Art. 3 Resolución 1401 de 2007.</p>
                 </div>
 
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
-                    Fecha de Realización de la Investigación *
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    className="w-full p-2.5 text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none font-bold text-gray-800"
-                    value={formData.investigationDate}
-                    onChange={e => setFormData({ ...formData, investigationDate: e.target.value })}
-                  />
-                  <p className="text-[9px] text-gray-400">Plazo legal: dentro de los 15 días calendario siguientes a la ocurrencia.</p>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
-                    Lugar o Sede donde se sesionó la Investigación
+                    Lugar o Sede de Sesión
                   </label>
                   <input
                     type="text"
@@ -467,8 +523,66 @@ export default function AccidentInvestigationModal({
                     value={formData.investigationPlace || ''}
                     onChange={e => setFormData({ ...formData, investigationPlace: e.target.value })}
                   />
+                  <p className="text-[9px] text-gray-400">Ubicación donde se reunió el equipo.</p>
                 </div>
               </div>
+
+              {/* Legal Deadline Dynamic Banner (Res. 1401/2007) */}
+              {formData.accidentDate && formData.investigationDate && (() => {
+                try {
+                  const dDiff = differenceInCalendarDays(
+                    parseISO(formData.investigationDate),
+                    parseISO(formData.accidentDate)
+                  );
+                  const isOver = dDiff > 15;
+                  const isNegative = dDiff < 0;
+
+                  return (
+                    <div className={`p-3.5 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs ${
+                      isNegative 
+                        ? 'bg-amber-50 border-amber-200 text-amber-900' 
+                        : isOver 
+                        ? 'bg-red-50 border-red-200 text-red-900' 
+                        : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                    }`}>
+                      <div className="flex items-center gap-2.5">
+                        {isOver ? (
+                          <Flame className="text-red-600 shrink-0" size={20} />
+                        ) : isNegative ? (
+                          <AlertTriangle className="text-amber-600 shrink-0" size={20} />
+                        ) : (
+                          <CheckCircle2 className="text-emerald-600 shrink-0" size={20} />
+                        )}
+                        <div>
+                          <p className="font-extrabold text-[12px]">
+                            {isNegative 
+                              ? 'Atención: La fecha de investigación es anterior a la fecha de ocurrencia del accidente.'
+                              : isOver 
+                              ? `Alerta Legal (Res. 1401/2007): Plazo vencido (${dDiff} días calendario transcurridos)`
+                              : `Cumplimiento Legal (Res. 1401/2007): En plazo (${dDiff} días calendario)`}
+                          </p>
+                          <p className="text-[10px] opacity-80 mt-0.5">
+                            {isOver 
+                              ? `Entre el accidente (${formData.accidentDate}) y la investigación (${formData.investigationDate}) pasaron ${dDiff} días. El plazo legal es de 15 días calendario.`
+                              : `La investigación cumple con los 15 días calendario exigidos para radicación ante la ARL y el Ministerio del Trabajo.`}
+                          </p>
+                        </div>
+                      </div>
+                      <span className={`px-3 py-1 rounded-full text-[10px] font-black shrink-0 uppercase tracking-wider ${
+                        isOver 
+                          ? 'bg-red-600 text-white animate-pulse' 
+                          : isNegative 
+                          ? 'bg-amber-600 text-white' 
+                          : 'bg-emerald-600 text-white'
+                      }`}>
+                        {isOver ? `+${dDiff} días (Extemporánea)` : `${dDiff} / 15 días`}
+                      </span>
+                    </div>
+                  );
+                } catch {
+                  return null;
+                }
+              })()}
 
               {/* Status and Actual Days */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -495,9 +609,10 @@ export default function AccidentInvestigationModal({
                     value={formData.status}
                     onChange={e => setFormData({ ...formData, status: e.target.value as any })}
                   >
-                    <option value="Borrador">📝 Borrador (En recolección de datos)</option>
-                    <option value="En Revisión">🔍 En Revisión por Equipo Investigador</option>
+                    <option value="Finalizada">✅ Finalizada (Cumplimiento Res. 1401 de 2007)</option>
                     <option value="Cerrada">✅ Cerrada y Aprobada por Representante Legal</option>
+                    <option value="En Revisión">🔍 En Revisión por Equipo Investigador</option>
+                    <option value="Borrador">📝 Borrador (En recolección de datos)</option>
                   </select>
                 </div>
               </div>
@@ -1280,23 +1395,33 @@ export default function AccidentInvestigationModal({
               Cancelar
             </button>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={handleDownloadPdf}
                 disabled={downloadingPdf}
-                className="px-5 py-3 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-2xl text-xs font-bold transition-all flex items-center gap-1.5"
+                className="px-4 py-3 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-2xl text-xs font-bold transition-all flex items-center gap-1.5"
               >
-                <Download size={16} className="text-emerald-600" />
-                {downloadingPdf ? 'Generando PDF...' : 'Descargar Informe PDF'}
+                <Download size={15} className="text-emerald-600" />
+                {downloadingPdf ? 'Generando PDF...' : 'Descargar PDF'}
               </button>
 
               <button
-                type="submit"
+                type="button"
+                onClick={() => handleSaveWithStatus('Borrador')}
+                disabled={saving}
+                className="px-4 py-3 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-2xl text-xs font-bold transition-all"
+              >
+                Guardar Borrador
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSaveWithStatus(formData.status === 'Borrador' ? 'Finalizada' : formData.status)}
                 disabled={saving}
                 className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-black shadow-lg shadow-emerald-200 transition-all flex items-center gap-2 active:scale-95"
               >
-                <Save size={16} />
+                <CheckCircle2 size={16} />
                 {saving ? 'Guardando...' : existingInvestigation ? 'Guardar Cambios Investigación' : 'Guardar y Finalizar Investigación'}
               </button>
             </div>

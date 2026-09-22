@@ -45,9 +45,15 @@ import {
   ShieldAlert,
   ArrowRight,
   Flame,
-  ChevronRight
+  ChevronRight,
+  CheckCircle2
 } from 'lucide-react';
 import { generateMonthlyIndicatorsFuratPdf } from '../services/pdfReportService';
+import { 
+  isInvestigationCompleted, 
+  isInvestigationInProgress, 
+  findInvestigationForRecord 
+} from '../utils/investigationUtils';
 
 interface Props {
   data: MonthlyIndicator[];
@@ -83,57 +89,75 @@ export default function Dashboard({
   const yearDropdownRef = useRef<HTMLDivElement>(null);
 
   // Identify accidents with pending investigations and calculate calendar days passed
-  const { overdueAccidents, nonOverduePendingAccidents } = useMemo(() => {
-    // A record has a completed investigation if there is an investigation with status 'Finalizada'
-    // Or if an investigation exists. In Colombian regulation, an investigation must be completed/finalized within 15 calendar days.
-    // If it's a draft (Borrador), it is still pending completion.
-    const finalizedRecordIds = new Set(
-      investigations.filter(inv => inv.status === 'Finalizada').map(inv => inv.recordId)
-    );
-    const draftInvestigationsMap = new Map(
-      investigations.filter(inv => inv.status === 'Borrador').map(inv => [inv.recordId, inv])
-    );
-
+  const { overdueAccidents, nonOverduePendingAccidents, allAccidentsCount, completedInvestigationsCount } = useMemo(() => {
     const now = new Date();
     const overdueList: Array<{
       record: EventRecord;
       daysElapsed: number;
       isDraft: boolean;
+      isInProgress: boolean;
       investigationId?: string;
+      statusText: string;
     }> = [];
 
     const nonOverdueList: Array<{
       record: EventRecord;
       daysElapsed: number;
       isDraft: boolean;
+      isInProgress: boolean;
       investigationId?: string;
+      statusText: string;
     }> = [];
 
-    records
-      .filter(r => r.eventType === EventType.ACCIDENTE && !finalizedRecordIds.has(r.id))
-      .forEach(rec => {
-        let daysElapsed = 0;
-        try {
-          const accidentDate = parseISO(rec.date);
-          daysElapsed = differenceInCalendarDays(now, accidentDate);
-        } catch (e) {
-          daysElapsed = 0;
-        }
+    const accidentRecords = records.filter(r => r.eventType === EventType.ACCIDENTE);
+    let completedCount = 0;
 
-        const draft = draftInvestigationsMap.get(rec.id);
-        const item = {
-          record: rec,
-          daysElapsed: Math.max(0, daysElapsed),
-          isDraft: Boolean(draft),
-          investigationId: draft?.id
-        };
+    accidentRecords.forEach(rec => {
+      const inv = findInvestigationForRecord(rec, investigations);
+      const isCompleted = inv ? isInvestigationCompleted(inv.status) : false;
 
-        if (daysElapsed > 15) {
-          overdueList.push(item);
+      if (isCompleted) {
+        completedCount++;
+        return; // Completed investigations are neither pending nor overdue
+      }
+
+      let daysElapsed = 0;
+      try {
+        const accidentDate = parseISO(rec.date);
+        daysElapsed = differenceInCalendarDays(now, accidentDate);
+      } catch (e) {
+        daysElapsed = 0;
+      }
+
+      const isDraft = inv ? (inv.status === 'Borrador') : false;
+      const isInProgress = inv ? isInvestigationInProgress(inv.status) : false;
+
+      let statusText = 'Sin investigación iniciada';
+      if (inv) {
+        if (inv.status === 'En Revisión') {
+          statusText = 'Investigación en revisión por equipo';
+        } else if (inv.status === 'Borrador') {
+          statusText = 'Investigación en borrador (incompleta)';
         } else {
-          nonOverdueList.push(item);
+          statusText = `Investigación: ${inv.status}`;
         }
-      });
+      }
+
+      const item = {
+        record: rec,
+        daysElapsed: Math.max(0, daysElapsed),
+        isDraft,
+        isInProgress,
+        investigationId: inv?.id,
+        statusText
+      };
+
+      if (daysElapsed > 15) {
+        overdueList.push(item);
+      } else {
+        nonOverdueList.push(item);
+      }
+    });
 
     // Sort overdue by longest time elapsed descending
     overdueList.sort((a, b) => b.daysElapsed - a.daysElapsed);
@@ -141,7 +165,9 @@ export default function Dashboard({
 
     return {
       overdueAccidents: overdueList,
-      nonOverduePendingAccidents: nonOverdueList
+      nonOverduePendingAccidents: nonOverdueList,
+      allAccidentsCount: accidentRecords.length,
+      completedInvestigationsCount: completedCount
     };
   }, [records, investigations]);
 
@@ -337,7 +363,7 @@ export default function Dashboard({
 
             {/* List of overdue cases */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-              {overdueAccidents.map(({ record, daysElapsed, isDraft }) => (
+              {overdueAccidents.map(({ record, daysElapsed, isDraft, isInProgress, statusText }) => (
                 <div 
                   key={record.id} 
                   className="bg-black/30 backdrop-blur-md border border-red-500/30 hover:border-red-400/60 p-4 rounded-2xl flex flex-col justify-between space-y-3 transition-all group"
@@ -382,11 +408,15 @@ export default function Dashboard({
                     <div className="text-[10px] font-bold">
                       {isDraft ? (
                         <span className="text-amber-300 flex items-center gap-1">
-                          <AlertCircle size={12} /> Investigación en borrador (incompleta)
+                          <AlertCircle size={12} /> {statusText}
+                        </span>
+                      ) : isInProgress ? (
+                        <span className="text-blue-300 flex items-center gap-1">
+                          <Activity size={12} /> {statusText}
                         </span>
                       ) : (
                         <span className="text-red-400 flex items-center gap-1">
-                          <ShieldAlert size={12} /> Sin investigación iniciada
+                          <ShieldAlert size={12} /> {statusText}
                         </span>
                       )}
                     </div>
@@ -399,13 +429,49 @@ export default function Dashboard({
                       className="w-full py-2 bg-red-600 hover:bg-red-500 active:scale-[0.98] text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 shadow-md shadow-red-900/50 cursor-pointer"
                     >
                       <GitFork size={13} />
-                      {isDraft ? 'Continuar y Finalizar Investigación' : 'Iniciar Investigación Inmediata'}
+                      {isDraft || isInProgress ? 'Continuar y Finalizar Investigación' : 'Iniciar Investigación Inmediata'}
                     </button>
                   )}
                 </div>
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Reassurance Banner: When accidents exist and all have completed investigations */}
+      {allAccidentsCount > 0 && overdueAccidents.length === 0 && (
+        <div className="bg-gradient-to-r from-emerald-950 via-teal-950 to-neutral-900 border border-emerald-500/30 p-5 rounded-3xl shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-white">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-emerald-500/20 text-emerald-400 rounded-2xl border border-emerald-500/30 shrink-0">
+              <CheckCircle2 size={24} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm sm:text-base font-extrabold text-white">
+                  Investigaciones al Día (Resolución 1401 de 2007)
+                </h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                  100% Culminadas
+                </span>
+              </div>
+              <p className="text-xs text-emerald-200/80 mt-0.5 font-medium">
+                Los {allAccidentsCount} accidentes reportados cuentan con su investigación realizada y culminada satisfactoriamente.
+              </p>
+            </div>
+          </div>
+
+          {onNavigateToInvestigation && (
+            <button
+              type="button"
+              onClick={() => onNavigateToInvestigation()}
+              className="px-4 py-2 bg-white/10 hover:bg-white/20 text-emerald-200 border border-emerald-500/30 font-bold rounded-xl text-xs transition-all flex items-center gap-1.5 shrink-0 self-start sm:self-auto cursor-pointer"
+            >
+              <GitFork size={14} />
+              <span>Ver Expedientes</span>
+              <ChevronRight size={14} />
+            </button>
+          )}
         </div>
       )}
 

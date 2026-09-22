@@ -26,6 +26,11 @@ import {
 } from 'lucide-react';
 import { differenceInCalendarDays, parseISO } from 'date-fns';
 import { generateInvestigationPdf } from '../services/pdfReportService';
+import { 
+  findInvestigationForRecord, 
+  isInvestigationCompleted, 
+  isInvestigationInProgress 
+} from '../utils/investigationUtils';
 
 interface Props {
   company: Company | null;
@@ -48,11 +53,12 @@ export default function AccidentInvestigationList({
   const [filterSeverity, setFilterSeverity] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
 
-  // Find accidents that haven't been investigated yet
-  const investigatedRecordIds = new Set(investigations.map(inv => inv.recordId));
-  const pendingAccidents = records.filter(
-    r => r.eventType === EventType.ACCIDENTE && !investigatedRecordIds.has(r.id)
-  );
+  // Find accidents that have NOT been completed/closed yet
+  const pendingAccidents = records.filter(r => {
+    if (r.eventType !== EventType.ACCIDENTE) return false;
+    const inv = findInvestigationForRecord(r, investigations);
+    return !inv || !isInvestigationCompleted(inv.status);
+  });
 
   // Filter investigations
   const filteredInvestigations = investigations.filter(inv => {
@@ -61,13 +67,29 @@ export default function AccidentInvestigationList({
       (inv.idNumber || '').includes(searchTerm) ||
       (inv.position || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesSeverity = filterSeverity === 'all' || inv.severity === filterSeverity;
-    const matchesStatus = filterStatus === 'all' || inv.status === filterStatus;
+    const matchesStatus = 
+      filterStatus === 'all' || 
+      inv.status === filterStatus ||
+      (filterStatus === 'Finalizada' && isInvestigationCompleted(inv.status)) ||
+      (filterStatus === 'Cerrada' && isInvestigationCompleted(inv.status));
     return matchesSearch && matchesSeverity && matchesStatus;
   });
 
   const handleDownload = (inv: AccidentInvestigation) => {
-    const rec = records.find(r => r.id === inv.recordId) || null;
-    generateInvestigationPdf(inv, company, rec);
+    const rec = records.find(r => r.id === inv.recordId) || records.find(r => {
+      const invDoc = (inv.idNumber || '').trim();
+      const rDoc = (r.idNumber || '').trim();
+      return invDoc && rDoc && invDoc === rDoc;
+    }) || null;
+    const syncedInv: AccidentInvestigation = {
+      ...inv,
+      accidentDate: rec?.date || inv.accidentDate,
+      employeeName: rec?.employeeName || inv.employeeName,
+      idNumber: rec?.idNumber || inv.idNumber,
+      position: rec?.position || inv.position,
+      department: rec?.department || inv.department
+    };
+    generateInvestigationPdf(syncedInv, company, rec);
   };
 
   return (
@@ -97,6 +119,28 @@ export default function AccidentInvestigationList({
         </button>
       </div>
 
+      {/* 100% Compliance Banner when all accidents are investigated */}
+      {records.some(r => r.eventType === EventType.ACCIDENTE) && pendingAccidents.length === 0 && (
+        <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-3xl flex items-center justify-between gap-4 text-emerald-900 shadow-2xs">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-emerald-100 text-emerald-700 rounded-xl">
+              <CheckCircle2 size={20} />
+            </div>
+            <div>
+              <h4 className="text-xs font-black uppercase tracking-wider text-emerald-950">
+                100% de Cumplimiento Legal (Resolución 1401 de 2007)
+              </h4>
+              <p className="text-[11px] text-emerald-800">
+                Todos los accidentes de trabajo registrados tienen su investigación realizada y culminada conforme a la ley.
+              </p>
+            </div>
+          </div>
+          <span className="px-3 py-1 bg-emerald-200/80 text-emerald-900 rounded-full text-[10px] font-black uppercase tracking-wider shrink-0 border border-emerald-300">
+            Sin Alertas
+          </span>
+        </div>
+      )}
+
       {/* Pending Accidents Alert (Pending Investigations) */}
       {pendingAccidents.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 p-5 rounded-3xl space-y-3">
@@ -116,6 +160,7 @@ export default function AccidentInvestigationList({
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
             {pendingAccidents.map(acc => {
+              const existingInv = findInvestigationForRecord(acc, investigations);
               let daysElapsed = 0;
               try {
                 daysElapsed = differenceInCalendarDays(new Date(), parseISO(acc.date));
@@ -157,7 +202,13 @@ export default function AccidentInvestigationList({
 
                   <button
                     type="button"
-                    onClick={() => onNewInvestigation(acc)}
+                    onClick={() => {
+                      if (existingInv) {
+                        onEditInvestigation(existingInv);
+                      } else {
+                        onNewInvestigation(acc);
+                      }
+                    }}
                     className={`w-full py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs text-white ${
                       isOverdue 
                         ? 'bg-red-600 hover:bg-red-700 font-black shadow-red-200' 
@@ -165,7 +216,7 @@ export default function AccidentInvestigationList({
                     }`}
                   >
                     <GitFork size={13} />
-                    {isOverdue ? 'Investigar Inmediatamente (Vencida)' : 'Iniciar Investigación'}
+                    {existingInv ? 'Completar y Finalizar Investigación' : isOverdue ? 'Investigar Inmediatamente (Vencida)' : 'Iniciar Investigación'}
                   </button>
                 </div>
               );
@@ -243,6 +294,36 @@ export default function AccidentInvestigationList({
             const openActions = (inv.actionPlan || []).filter(a => a.status === 'Abierto').length;
             const closedActions = (inv.actionPlan || []).filter(a => a.status === 'Implementado').length;
 
+            const matchingRecord = records.find(r => r.id === inv.recordId) ||
+              records.find(r => {
+                const invDoc = (inv.idNumber || '').trim();
+                const rDoc = (r.idNumber || '').trim();
+                return Boolean(invDoc && rDoc && invDoc === rDoc);
+              });
+            const effectiveAccidentDate = matchingRecord?.date || inv.accidentDate;
+            const effectiveWorkerName = matchingRecord?.employeeName || inv.employeeName;
+            const effectiveIdNumber = matchingRecord?.idNumber || inv.idNumber;
+            const effectivePosition = matchingRecord?.position || inv.position;
+
+            const isCompleted = isInvestigationCompleted(inv.status);
+
+            let daysElapsed = 0;
+            let isOverdue = false;
+            try {
+              if (effectiveAccidentDate) {
+                if (isCompleted && inv.investigationDate) {
+                  daysElapsed = Math.max(0, differenceInCalendarDays(parseISO(inv.investigationDate), parseISO(effectiveAccidentDate)));
+                  isOverdue = daysElapsed > 15;
+                } else if (!isCompleted) {
+                  daysElapsed = Math.max(0, differenceInCalendarDays(new Date(), parseISO(effectiveAccidentDate)));
+                  isOverdue = daysElapsed > 15;
+                } else {
+                  daysElapsed = 0;
+                  isOverdue = false;
+                }
+              }
+            } catch {}
+
             return (
               <div key={inv.id} className="bg-white rounded-3xl border border-gray-200 p-5 shadow-xs hover:shadow-md transition-shadow flex flex-col justify-between space-y-4">
                 
@@ -257,33 +338,70 @@ export default function AccidentInvestigationList({
                       Severidad: {inv.severity}
                     </span>
 
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      inv.status === 'Finalizada' ? 'bg-emerald-100 text-emerald-800' :
-                      'bg-amber-100 text-amber-800'
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                      isCompleted ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
+                      inv.status === 'En Revisión' ? 'bg-blue-100 text-blue-800 border-blue-200' :
+                      'bg-amber-100 text-amber-800 border-amber-200'
                     }`}>
-                      {inv.status}
+                      {inv.status === 'Cerrada' ? 'Cerrada / Culminada' : inv.status}
                     </span>
                   </div>
 
                   <div>
                     <h3 className="text-base font-extrabold text-gray-900 leading-snug">
-                      {inv.employeeName}
+                      {effectiveWorkerName}
                     </h3>
                     <p className="text-xs text-gray-500 font-medium">
-                      C.C. {inv.idNumber} • {inv.position}
+                      C.C. {effectiveIdNumber} • {effectivePosition}
                     </p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 text-[11px] text-gray-600 pt-1">
-                    <div className="bg-gray-50 p-2 rounded-xl">
-                      <span className="text-[9px] font-bold text-gray-400 uppercase block">F. Accidente:</span>
-                      <span className="font-bold">{inv.accidentDate || '-'}</span>
+                    <div className="bg-gray-50 p-2 rounded-xl border border-gray-100">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[9px] font-bold text-gray-400 uppercase">F. Accidente:</span>
+                        <span className="text-[8px] font-bold text-emerald-700 bg-emerald-50 px-1 rounded border border-emerald-200">FURAT</span>
+                      </div>
+                      <span className="font-extrabold text-gray-900 block mt-0.5">{effectiveAccidentDate || '-'}</span>
                     </div>
-                    <div className="bg-gray-50 p-2 rounded-xl">
+                    <div className="bg-gray-50 p-2 rounded-xl border border-gray-100">
                       <span className="text-[9px] font-bold text-gray-400 uppercase block">F. Investigación:</span>
-                      <span className="font-bold">{inv.investigationDate || '-'}</span>
+                      <span className="font-extrabold text-gray-900 block mt-0.5">{inv.investigationDate || '-'}</span>
                     </div>
                   </div>
+
+                  {/* Legal Compliance Banner (Res. 1401/2007) */}
+                  {effectiveAccidentDate && (
+                    <div className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold flex items-center justify-between ${
+                      isCompleted
+                        ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                        : isOverdue 
+                          ? 'bg-red-100 text-red-900 border border-red-300 font-extrabold shadow-xs' 
+                          : 'bg-amber-50 text-amber-800 border border-amber-200'
+                    }`}>
+                      <span className="flex items-center gap-1.5">
+                        {isCompleted ? (
+                          <CheckCircle2 size={12} className="text-emerald-600 shrink-0" />
+                        ) : isOverdue ? (
+                          <Flame size={12} className="text-red-600 shrink-0 animate-pulse" />
+                        ) : (
+                          <Clock size={12} className="text-amber-600 shrink-0" />
+                        )}
+                        <span>
+                          {isCompleted
+                            ? isOverdue 
+                              ? `Investigación culminada (${daysElapsed} días tras evento)` 
+                              : `Investigación culminada en plazo de ley (Res. 1401)`
+                            : isOverdue 
+                              ? `¡Plazo vencido! (${daysElapsed} días > 15d)` 
+                              : `En plazo de investigación (${daysElapsed} de 15 días)`}
+                        </span>
+                      </span>
+                      <span className="text-[9px] uppercase font-black tracking-wider">
+                        {isCompleted ? 'Res. 1401 OK' : isOverdue ? '¡Alerta!' : 'Trámite'}
+                      </span>
+                    </div>
+                  )}
 
                   {/* Summary of Causal Tree & Plan */}
                   <div className="p-3 bg-emerald-50/40 rounded-xl border border-emerald-100 text-[10px] space-y-1 text-emerald-900">
@@ -320,7 +438,13 @@ export default function AccidentInvestigationList({
 
                   <button
                     type="button"
-                    onClick={() => onEditInvestigation(inv)}
+                    onClick={() => onEditInvestigation({
+                      ...inv,
+                      accidentDate: effectiveAccidentDate,
+                      employeeName: effectiveWorkerName,
+                      idNumber: effectiveIdNumber,
+                      position: effectivePosition
+                    })}
                     className="p-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-xl transition-colors"
                     title="Editar investigación"
                   >

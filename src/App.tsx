@@ -31,6 +31,11 @@ import {
 import { format, parseISO, differenceInCalendarDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { calculateIndicators, calculateYearlyIndicators } from './services/indicatorService';
+import { 
+  findInvestigationForRecord, 
+  isInvestigationCompleted, 
+  isInvestigationInProgress 
+} from './utils/investigationUtils';
 import { auth } from './lib/firebase';
 import { signOut } from 'firebase/auth';
 
@@ -198,6 +203,34 @@ export default function App() {
   const updateRecord = async (id: string, record: Partial<EventRecord>) => {
     try {
       await firebaseService.updateRecord(id, record);
+
+      // Synchronize all linked investigations with updated accident data
+      const linkedInvestigations = investigations.filter(inv => inv.recordId === id);
+      for (const inv of linkedInvestigations) {
+        const updates: Partial<AccidentInvestigation> = {};
+        if (record.date && record.date !== inv.accidentDate) {
+          updates.accidentDate = record.date;
+        }
+        if (record.time && record.time !== inv.accidentTime) {
+          updates.accidentTime = record.time;
+        }
+        if (record.employeeName && record.employeeName !== inv.employeeName) {
+          updates.employeeName = record.employeeName;
+        }
+        if (record.idNumber && record.idNumber !== inv.idNumber) {
+          updates.idNumber = record.idNumber;
+        }
+        if (record.position && record.position !== inv.position) {
+          updates.position = record.position;
+        }
+        if (record.department && record.department !== inv.department) {
+          updates.department = record.department;
+        }
+        if (Object.keys(updates).length > 0) {
+          await firebaseService.updateInvestigation(inv.id, updates);
+        }
+      }
+
       setShowEventForm(false);
       setEditingRecord(null);
     } catch (err) {
@@ -207,6 +240,43 @@ export default function App() {
       throw err;
     }
   };
+
+  // Auto-sync investigations with linked accident records (dates, worker details, and recordId)
+  useEffect(() => {
+    if (!records.length || !investigations.length) return;
+    investigations.forEach(inv => {
+      // Find matching accident record by recordId or worker/date details
+      let match = records.find(r => r.id === inv.recordId);
+      if (!match) {
+        match = records.find(r => {
+          if (r.eventType !== EventType.ACCIDENTE) return false;
+          const found = findInvestigationForRecord(r, [inv]);
+          return Boolean(found);
+        });
+      }
+
+      if (match) {
+        const needsRecordIdSync = inv.recordId !== match.id;
+        const needsDateSync = match.date && inv.accidentDate !== match.date;
+        const needsNameSync = match.employeeName && inv.employeeName !== match.employeeName;
+        const needsDocSync = match.idNumber && inv.idNumber !== match.idNumber;
+
+        if (needsRecordIdSync || needsDateSync || needsNameSync || needsDocSync) {
+          firebaseService.updateInvestigation(inv.id, {
+            recordId: match.id,
+            accidentDate: match.date || inv.accidentDate,
+            accidentTime: match.time || inv.accidentTime || '',
+            employeeName: match.employeeName || inv.employeeName,
+            idNumber: match.idNumber || inv.idNumber,
+            position: match.position || inv.position,
+            department: match.department || inv.department
+          }).catch(err => {
+            console.warn("Aviso de sincronización de investigación:", err);
+          });
+        }
+      }
+    });
+  }, [records, investigations]);
 
   const handleEditRecord = (record: EventRecord) => {
     setEditingRecord(record);
@@ -257,17 +327,17 @@ export default function App() {
     : companies[0];
 
   // Count pending investigations and overdue (>15 calendar days) for accident records
-  const finalizedRecordIds = new Set(
-    investigations.filter(inv => inv.status === 'Finalizada').map(inv => inv.recordId)
-  );
-  const investigatedRecordIds = new Set(investigations.map(inv => inv.recordId));
-  
-  const pendingAccidentsCount = records.filter(
-    r => r.eventType === EventType.ACCIDENTE && !investigatedRecordIds.has(r.id)
-  ).length;
+  const pendingAccidentsCount = records.filter(r => {
+    if (r.eventType !== EventType.ACCIDENTE) return false;
+    const inv = findInvestigationForRecord(r, investigations);
+    return !inv || !isInvestigationCompleted(inv.status);
+  }).length;
 
   const overdueAccidentsCount = records.filter(r => {
-    if (r.eventType !== EventType.ACCIDENTE || finalizedRecordIds.has(r.id)) return false;
+    if (r.eventType !== EventType.ACCIDENTE) return false;
+    const inv = findInvestigationForRecord(r, investigations);
+    // If completed/finalized/cerrada, it is never overdue
+    if (inv && isInvestigationCompleted(inv.status)) return false;
     try {
       return differenceInCalendarDays(new Date(), parseISO(r.date)) > 15;
     } catch {
@@ -669,6 +739,17 @@ export default function App() {
               } else {
                 await firebaseService.addInvestigation({ ...invData, companyId: cid });
               }
+
+              // Bidirectional synchronization: if the accident date was edited, update the original event record too
+              if (invData.recordId && invData.accidentDate) {
+                const linkedRecord = records.find(r => r.id === invData.recordId);
+                if (linkedRecord && linkedRecord.date !== invData.accidentDate) {
+                  await firebaseService.updateRecord(linkedRecord.id, {
+                    date: invData.accidentDate
+                  });
+                }
+              }
+
               setShowInvestigationModal(false);
               setSelectedInvestigation(null);
               setInvestigationTargetRecord(null);

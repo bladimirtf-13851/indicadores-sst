@@ -1,8 +1,13 @@
 import React from 'react';
 import { EventRecord, EventType, AccidentType, AccidentInvestigation } from '../types';
-import { Calendar, User, MapPin, Clock, Trash2, ShieldAlert, AlertCircle, Activity, Edit2, GitFork, Flame } from 'lucide-react';
+import { Calendar, User, MapPin, Clock, Trash2, ShieldAlert, AlertCircle, Activity, Edit2, GitFork, Flame, CheckCircle2 } from 'lucide-react';
 import { format, parseISO, differenceInCalendarDays } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { 
+  findInvestigationForRecord, 
+  isInvestigationCompleted, 
+  isInvestigationInProgress 
+} from '../utils/investigationUtils';
 
 interface Props {
   records: EventRecord[];
@@ -13,12 +18,6 @@ interface Props {
 }
 
 export default function EventList({ records, investigations = [], onDelete, onEdit, onInvestigate }: Props) {
-  const finalizedRecordIds = new Set(
-    investigations.filter(i => i.status === 'Finalizada').map(i => i.recordId)
-  );
-  const draftRecordIds = new Set(
-    investigations.filter(i => i.status === 'Borrador').map(i => i.recordId)
-  );
   if (records.length === 0) {
     return (
       <div className="bg-white rounded-3xl p-16 text-center border border-dashed border-gray-200">
@@ -48,6 +47,10 @@ export default function EventList({ records, investigations = [], onDelete, onEd
           <tbody className="divide-y divide-gray-50">
             {records.map((record) => {
               const isAccident = record.eventType === EventType.ACCIDENTE;
+              const inv = isAccident ? findInvestigationForRecord(record, investigations) : undefined;
+              const isInvestigated = Boolean(inv && isInvestigationCompleted(inv?.status));
+              const isDraft = Boolean(inv && !isInvestigationCompleted(inv?.status));
+
               let daysElapsed = 0;
               if (isAccident) {
                 try {
@@ -56,9 +59,7 @@ export default function EventList({ records, investigations = [], onDelete, onEd
                   daysElapsed = 0;
                 }
               }
-              const isInvestigated = finalizedRecordIds.has(record.id);
               const isOverdue = isAccident && !isInvestigated && daysElapsed > 15;
-              const isDraft = isAccident && draftRecordIds.has(record.id);
 
               return (
               <tr 
@@ -66,6 +67,8 @@ export default function EventList({ records, investigations = [], onDelete, onEd
                 className={`transition-colors group ${
                   isOverdue 
                     ? 'bg-red-50/40 hover:bg-red-50/70 border-l-4 border-l-red-500' 
+                    : isInvestigated
+                    ? 'hover:bg-emerald-50/30'
                     : 'hover:bg-gray-50/50'
                 }`}
               >
@@ -162,20 +165,26 @@ export default function EventList({ records, investigations = [], onDelete, onEd
                     {record.eventType === EventType.ACCIDENTE && onInvestigate && (
                       <button
                         onClick={() => onInvestigate(record)}
-                        className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
-                          isOverdue 
+                        className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                          isInvestigated
+                            ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-2xs'
+                            : isOverdue 
                             ? 'bg-red-600 hover:bg-red-700 text-white font-black shadow-xs' 
                             : isDraft
-                            ? 'bg-amber-100 hover:bg-amber-200 text-amber-900'
-                            : isInvestigated
-                            ? 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                            : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                            ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-200'
+                            : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
                         }`}
-                        title={isOverdue ? 'Investigación vencida: han transcurrido más de 15 días calendario (Res. 1401/2007)' : 'Investigar según Res. 1401/2007'}
+                        title={
+                          isInvestigated 
+                            ? `Investigación ${inv?.status || 'Finalizada'}: Ver informe oficial Res. 1401/2007` 
+                            : isOverdue 
+                            ? 'Investigación vencida: han transcurrido más de 15 días calendario (Res. 1401/2007)' 
+                            : 'Investigar según Res. 1401/2007'
+                        }
                       >
-                        <GitFork size={13} />
+                        {isInvestigated ? <CheckCircle2 size={13} className="text-emerald-600" /> : <GitFork size={13} />}
                         <span className="hidden sm:inline">
-                          {isOverdue ? 'Investigar Ya (+15d)' : isDraft ? 'Completar' : isInvestigated ? 'Ver Inv.' : 'Investigar'}
+                          {isInvestigated ? 'Inv. Culminada' : isOverdue ? 'Investigar Ya (+15d)' : isDraft ? 'Completar' : 'Investigar'}
                         </span>
                       </button>
                     )}

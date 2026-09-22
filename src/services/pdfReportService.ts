@@ -81,7 +81,7 @@ export const generateInvestigationPdf = (
         `Área / Departamento: ${investigation.department || '-'}`
       ],
       [
-        `Fecha y Hora del Accidente: ${investigation.accidentDate || '-'} ${investigation.accidentTime || ''}\n` +
+        `Fecha y Hora del Accidente: ${record?.date || investigation.accidentDate || '-'} ${record?.time || investigation.accidentTime || ''}\n` +
         `Lugar / Sitio del Accidente: ${record?.location || investigation.investigationPlace || '-'}\n` +
         `Tipo de Lesión: ${(record?.injuryType || []).join(', ') || investigation.injuryDescription || '-'}\n` +
         `Parte del Cuerpo Afectada: ${(record?.bodyPart || []).join(', ') || investigation.bodyPart || '-'}\n` +

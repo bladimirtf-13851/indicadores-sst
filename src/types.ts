@@ -227,7 +227,7 @@ export interface AccidentInvestigation {
   technicalSupport: CommitteeSignature; // Apoyo Técnico / Especialista
   legalRepApproval: CommitteeSignature; // Aprobación Representante Legal
 
-  status: 'Borrador' | 'Finalizada';
+  status: 'Borrador' | 'En Revisión' | 'Finalizada' | 'Cerrada';
   createdAt: string;
   updatedAt: string;
 }

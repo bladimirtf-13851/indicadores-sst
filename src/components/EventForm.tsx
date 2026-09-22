@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { AccidentType, EventType, EventRecord, OriginType, FORM_OPTIONS } from '../types';
-import { Plus, X, AlertCircle, ShieldAlert, Clock, User, Briefcase, MapPin, Activity, Save, Calendar as CalendarIcon, Phone, Mail, Building, Users, FileText, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, X, AlertCircle, ShieldAlert, Clock, User, Briefcase, MapPin, Activity, Save, Calendar as CalendarIcon, Phone, Mail, Building, Users, FileText, CheckCircle2, ChevronDown, ChevronUp, AlertTriangle, Loader2 } from 'lucide-react';
 import { differenceInDays, parseISO, format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 interface Props {
-  onAdd: (record: Omit<EventRecord, 'id'>) => void;
-  onUpdate?: (id: string, record: Partial<EventRecord>) => void;
+  onAdd: (record: Omit<EventRecord, 'id'>) => Promise<void> | void;
+  onUpdate?: (id: string, record: Partial<EventRecord>) => Promise<void> | void;
   onClose: () => void;
   editRecord?: EventRecord | null;
 }
@@ -73,10 +73,13 @@ const MultiSelect = ({
 
 export default function EventForm({ onAdd, onUpdate, onClose, editRecord }: Props) {
   const [activeSection, setActiveSection] = useState<'general' | 'worker' | 'accident' | 'witnesses' | 'responsible'>('general');
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [validationSummary, setValidationSummary] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [formData, setFormData] = useState<Omit<EventRecord, 'id'>>({
     date: new Date().toISOString().split('T')[0],
-    time: '',
+    time: '08:00',
     description: '',
     eventType: EventType.ACCIDENTE,
     accidentType: AccidentType.INCAPACITANTE,
@@ -251,14 +254,164 @@ export default function EventForm({ onAdd, onUpdate, onClose, editRecord }: Prop
     setFormData(prev => ({ ...prev, witnesses: cur }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (editRecord && onUpdate) {
-      onUpdate(editRecord.id, formData);
-    } else {
-      onAdd(formData);
+  const clearError = (field: string) => {
+    if (formErrors[field]) {
+      setFormErrors(prev => {
+        const next = { ...prev };
+        delete next[field];
+        return next;
+      });
     }
-    onClose();
+  };
+
+  const getTabHasError = (tabId: string) => {
+    if (tabId === 'worker') {
+      return !!(formErrors.firstSurname || formErrors.firstName || formErrors.idNumber || formErrors.position || formErrors.department);
+    }
+    if (tabId === 'accident') {
+      return !!(formErrors.date || formErrors.time);
+    }
+    if (tabId === 'witnesses') {
+      return !!formErrors.description;
+    }
+    if (tabId === 'responsible') {
+      return !!(formErrors.reportResponsibleName || formErrors.reportResponsiblePosition || formErrors.reportResponsibleIdNumber);
+    }
+    return false;
+  };
+
+  const validateForm = (): boolean => {
+    const errors: Record<string, string> = {};
+    let targetTab: 'general' | 'worker' | 'accident' | 'witnesses' | 'responsible' | null = null;
+
+    if (formData.eventType === EventType.ACCIDENTE) {
+      // 2. Trabajador
+      if (!formData.firstSurname?.trim()) {
+        errors.firstSurname = 'El primer apellido es obligatorio.';
+        if (!targetTab) targetTab = 'worker';
+      }
+      if (!formData.firstName?.trim()) {
+        errors.firstName = 'El primer nombre es obligatorio.';
+        if (!targetTab) targetTab = 'worker';
+      }
+      if (!formData.idNumber?.trim()) {
+        errors.idNumber = 'El número de documento es obligatorio.';
+        if (!targetTab) targetTab = 'worker';
+      }
+      if (!formData.position?.trim() && !formData.habitualOccupation?.trim()) {
+        errors.position = 'El cargo u ocupación es obligatorio.';
+        if (!targetTab) targetTab = 'worker';
+      }
+      if (!formData.department?.trim()) {
+        errors.department = 'El área o departamento es obligatorio.';
+        if (!targetTab) targetTab = 'worker';
+      }
+
+      // 3. Accidente
+      if (!formData.date?.trim()) {
+        errors.date = 'La fecha del accidente es obligatoria.';
+        if (!targetTab) targetTab = 'accident';
+      }
+      if (!formData.time?.trim()) {
+        errors.time = 'La hora del accidente es obligatoria.';
+        if (!targetTab) targetTab = 'accident';
+      }
+
+      // 4. Relato
+      if (!formData.description?.trim()) {
+        errors.description = 'La descripción detallada del hecho es obligatoria.';
+        if (!targetTab) targetTab = 'witnesses';
+      }
+
+      // 5. Responsable
+      if (!formData.reportResponsibleName?.trim()) {
+        errors.reportResponsibleName = 'El nombre del responsable es obligatorio.';
+        if (!targetTab) targetTab = 'responsible';
+      }
+      if (!formData.reportResponsiblePosition?.trim()) {
+        errors.reportResponsiblePosition = 'El cargo del responsable es obligatorio.';
+        if (!targetTab) targetTab = 'responsible';
+      }
+      if (!formData.reportResponsibleIdNumber?.trim()) {
+        errors.reportResponsibleIdNumber = 'El documento del responsable es obligatorio.';
+        if (!targetTab) targetTab = 'responsible';
+      }
+    } else if (formData.eventType === EventType.INCIDENTE) {
+      if (!formData.date?.trim()) errors.date = 'La fecha del incidente es obligatoria.';
+      if (!formData.department?.trim()) errors.department = 'El área o departamento es obligatorio.';
+      if (!formData.employeeName?.trim()) errors.employeeName = 'El nombre del trabajador es obligatorio.';
+      if (!formData.description?.trim()) errors.description = 'La descripción del incidente es obligatoria.';
+    } else if (formData.eventType === EventType.AUSENTISMO) {
+      if (!formData.department?.trim()) errors.department = 'El área o departamento es obligatorio.';
+      if (!formData.employeeName?.trim()) errors.employeeName = 'El nombre del trabajador es obligatorio.';
+      if (!formData.incapacityStartDate?.trim()) errors.incapacityStartDate = 'La fecha de inicio es obligatoria.';
+      if (!formData.incapacityEndDate?.trim()) errors.incapacityEndDate = 'La fecha de fin es obligatoria.';
+    }
+
+    setFormErrors(errors);
+
+    if (Object.keys(errors).length > 0) {
+      if (targetTab) {
+        setActiveSection(targetTab);
+      }
+      const sectionLabels: Record<string, string> = {
+        worker: '2. Trabajador',
+        accident: '3. Datos del Accidente',
+        witnesses: '4. Relato y Testigos',
+        responsible: '5. Responsable Informe',
+        general: '1. Afiliación y Sede'
+      };
+      const sectionName = targetTab ? sectionLabels[targetTab] : '';
+      setValidationSummary(
+        `Faltan campos obligatorios por diligenciar${sectionName ? ` (Revisa: ${sectionName})` : ''}. Por favor verifique los campos marcados.`
+      );
+      return false;
+    }
+
+    setValidationSummary(null);
+    return true;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validateForm()) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    setValidationSummary(null);
+
+    // Consolidated employee name
+    const computedName = (
+      formData.employeeName?.trim() ||
+      [formData.firstSurname, formData.secondSurname, formData.firstName, formData.secondName].filter(Boolean).join(' ')
+    ).trim() || 'Trabajador';
+
+    const payload: Omit<EventRecord, 'id'> = {
+      ...formData,
+      employeeName: computedName,
+      time: formData.time || '08:00',
+      position: formData.position || formData.habitualOccupation || 'Operario',
+      department: formData.department || 'General',
+      lostDays: Number(formData.lostDays) || 0,
+      chargedDays: Number(formData.chargedDays) || 0,
+      reportDate: formData.reportDate || new Date().toISOString().split('T')[0]
+    };
+
+    try {
+      if (editRecord && onUpdate) {
+        await onUpdate(editRecord.id, payload);
+      } else {
+        await onAdd(payload);
+      }
+      onClose();
+    } catch (err: any) {
+      console.error("Error al guardar registro:", err);
+      const msg = err instanceof Error ? err.message : (err?.message || "Error al conectar con la base de datos");
+      setValidationSummary("Error al guardar el registro: " + msg);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -312,25 +465,41 @@ export default function EventForm({ onAdd, onUpdate, onClose, editRecord }: Prop
               { id: 'accident', label: '3. Datos del Accidente' },
               { id: 'witnesses', label: '4. Relato y Testigos' },
               { id: 'responsible', label: '5. Responsable Informe' },
-            ].map(tab => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveSection(tab.id as any)}
-                className={`px-4 py-2.5 rounded-t-xl text-xs font-bold whitespace-nowrap transition-all border-b-2 ${
-                  activeSection === tab.id
-                    ? 'border-emerald-600 text-emerald-700 bg-white shadow-sm'
-                    : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-white/50'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+            ].map(tab => {
+              const hasErr = getTabHasError(tab.id);
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveSection(tab.id as any)}
+                  className={`px-4 py-2.5 rounded-t-xl text-xs font-bold whitespace-nowrap transition-all border-b-2 flex items-center gap-1.5 ${
+                    activeSection === tab.id
+                      ? 'border-emerald-600 text-emerald-700 bg-white shadow-sm'
+                      : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-white/50'
+                  }`}
+                >
+                  <span>{tab.label}</span>
+                  {hasErr && (
+                    <span className="w-2 h-2 rounded-full bg-red-500 ring-2 ring-white animate-pulse" title="Campos obligatorios pendientes en esta sección" />
+                  )}
+                </button>
+              );
+            })}
           </div>
         )}
         
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-8 overflow-y-auto scrollbar-hide flex-1">
+        <form noValidate onSubmit={handleSubmit} className="p-6 space-y-8 overflow-y-auto scrollbar-hide flex-1">
+          
+          {/* Validation Alert Banner */}
+          {validationSummary && (
+            <div className="p-4 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-3 text-red-800 animate-fadeIn">
+              <AlertTriangle size={18} className="text-red-500 shrink-0 mt-0.5" />
+              <div className="text-xs font-bold leading-relaxed">
+                {validationSummary}
+              </div>
+            </div>
+          )}
           
           {/* Section: Type Selection */}
           <div className="space-y-3">
@@ -577,12 +746,19 @@ export default function EventForm({ onAdd, onUpdate, onClose, editRecord }: Prop
                         <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Primer Apellido *</label>
                         <input
                           type="text"
-                          required
                           placeholder="Ej: Gómez"
-                          className="w-full p-2.5 text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
+                          className={`w-full p-2.5 text-xs border rounded-xl outline-none ${
+                            formErrors.firstSurname ? 'border-red-400 bg-red-50/20 focus:ring-2 focus:ring-red-400' : 'border-gray-200 focus:ring-2 focus:ring-emerald-500'
+                          }`}
                           value={formData.firstSurname || ''}
-                          onChange={e => setFormData({ ...formData, firstSurname: e.target.value })}
+                          onChange={e => {
+                            clearError('firstSurname');
+                            setFormData({ ...formData, firstSurname: e.target.value });
+                          }}
                         />
+                        {formErrors.firstSurname && (
+                          <p className="text-[10px] text-red-600 font-bold">{formErrors.firstSurname}</p>
+                        )}
                       </div>
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Segundo Apellido</label>
@@ -598,12 +774,19 @@ export default function EventForm({ onAdd, onUpdate, onClose, editRecord }: Prop
                         <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Primer Nombre *</label>
                         <input
                           type="text"
-                          required
                           placeholder="Ej: Carlos"
-                          className="w-full p-2.5 text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
+                          className={`w-full p-2.5 text-xs border rounded-xl outline-none ${
+                            formErrors.firstName ? 'border-red-400 bg-red-50/20 focus:ring-2 focus:ring-red-400' : 'border-gray-200 focus:ring-2 focus:ring-emerald-500'
+                          }`}
                           value={formData.firstName || ''}
-                          onChange={e => setFormData({ ...formData, firstName: e.target.value })}
+                          onChange={e => {
+                            clearError('firstName');
+                            setFormData({ ...formData, firstName: e.target.value });
+                          }}
                         />
+                        {formErrors.firstName && (
+                          <p className="text-[10px] text-red-600 font-bold">{formErrors.firstName}</p>
+                        )}
                       </div>
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Segundo Nombre</label>
@@ -637,12 +820,19 @@ export default function EventForm({ onAdd, onUpdate, onClose, editRecord }: Prop
                         <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Número de Documento *</label>
                         <input
                           type="text"
-                          required
                           placeholder="Ej: 1020304050"
-                          className="w-full p-2.5 text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none font-mono"
+                          className={`w-full p-2.5 text-xs border rounded-xl outline-none font-mono ${
+                            formErrors.idNumber ? 'border-red-400 bg-red-50/20 focus:ring-2 focus:ring-red-400' : 'border-gray-200 focus:ring-2 focus:ring-emerald-500'
+                          }`}
                           value={formData.idNumber || ''}
-                          onChange={e => setFormData({ ...formData, idNumber: e.target.value })}
+                          onChange={e => {
+                            clearError('idNumber');
+                            setFormData({ ...formData, idNumber: e.target.value });
+                          }}
                         />
+                        {formErrors.idNumber && (
+                          <p className="text-[10px] text-red-600 font-bold">{formErrors.idNumber}</p>
+                        )}
                       </div>
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Fecha de Nacimiento</label>
@@ -714,12 +904,19 @@ export default function EventForm({ onAdd, onUpdate, onClose, editRecord }: Prop
                         <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Cargo / Ocupación Habitual *</label>
                         <input
                           type="text"
-                          required
                           placeholder="Ej: Operario de Máquina"
-                          className="w-full p-2.5 text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
+                          className={`w-full p-2.5 text-xs border rounded-xl outline-none ${
+                            formErrors.position ? 'border-red-400 bg-red-50/20 focus:ring-2 focus:ring-red-400' : 'border-gray-200 focus:ring-2 focus:ring-emerald-500'
+                          }`}
                           value={formData.position || formData.habitualOccupation || ''}
-                          onChange={e => setFormData({ ...formData, position: e.target.value, habitualOccupation: e.target.value })}
+                          onChange={e => {
+                            clearError('position');
+                            setFormData({ ...formData, position: e.target.value, habitualOccupation: e.target.value });
+                          }}
                         />
+                        {formErrors.position && (
+                          <p className="text-[10px] text-red-600 font-bold">{formErrors.position}</p>
+                        )}
                       </div>
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Código Ocupación (CNO)</label>
@@ -735,12 +932,19 @@ export default function EventForm({ onAdd, onUpdate, onClose, editRecord }: Prop
                         <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Área / Departamento *</label>
                         <input
                           type="text"
-                          required
                           placeholder="Ej: Producción, Logística"
-                          className="w-full p-2.5 text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
+                          className={`w-full p-2.5 text-xs border rounded-xl outline-none ${
+                            formErrors.department ? 'border-red-400 bg-red-50/20 focus:ring-2 focus:ring-red-400' : 'border-gray-200 focus:ring-2 focus:ring-emerald-500'
+                          }`}
                           value={formData.department || ''}
-                          onChange={e => setFormData({ ...formData, department: e.target.value })}
+                          onChange={e => {
+                            clearError('department');
+                            setFormData({ ...formData, department: e.target.value });
+                          }}
                         />
+                        {formErrors.department && (
+                          <p className="text-[10px] text-red-600 font-bold">{formErrors.department}</p>
+                        )}
                       </div>
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Fecha Ingreso a Empresa</label>
@@ -833,21 +1037,35 @@ export default function EventForm({ onAdd, onUpdate, onClose, editRecord }: Prop
                         <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Fecha del Accidente *</label>
                         <input
                           type="date"
-                          required
-                          className="w-full p-2.5 text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none font-bold text-gray-700"
+                          className={`w-full p-2.5 text-xs border rounded-xl outline-none font-bold text-gray-700 ${
+                            formErrors.date ? 'border-red-400 bg-red-50/20 focus:ring-2 focus:ring-red-400' : 'border-gray-200 focus:ring-2 focus:ring-emerald-500'
+                          }`}
                           value={formData.date}
-                          onChange={e => setFormData({ ...formData, date: e.target.value })}
+                          onChange={e => {
+                            clearError('date');
+                            setFormData({ ...formData, date: e.target.value });
+                          }}
                         />
+                        {formErrors.date && (
+                          <p className="text-[10px] text-red-600 font-bold">{formErrors.date}</p>
+                        )}
                       </div>
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Hora del Accidente (HH:MM) *</label>
                         <input
                           type="time"
-                          required
-                          className="w-full p-2.5 text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none font-bold text-gray-700"
+                          className={`w-full p-2.5 text-xs border rounded-xl outline-none font-bold text-gray-700 ${
+                            formErrors.time ? 'border-red-400 bg-red-50/20 focus:ring-2 focus:ring-red-400' : 'border-gray-200 focus:ring-2 focus:ring-emerald-500'
+                          }`}
                           value={formData.time || ''}
-                          onChange={e => setFormData({ ...formData, time: e.target.value })}
+                          onChange={e => {
+                            clearError('time');
+                            setFormData({ ...formData, time: e.target.value });
+                          }}
                         />
+                        {formErrors.time && (
+                          <p className="text-[10px] text-red-600 font-bold">{formErrors.time}</p>
+                        )}
                       </div>
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Día de la Semana</label>
@@ -1133,13 +1351,20 @@ export default function EventForm({ onAdd, onUpdate, onClose, editRecord }: Prop
                         Descripción Detallada del Hecho (Qué lo originó o causó y aspectos fácticos) *
                       </label>
                       <textarea
-                        required
                         rows={4}
                         placeholder="Describa detalladamente el accidente: lugar exacto, actividad que ejecutaba, cómo se produjo, herramientas involucradas y consecuencias inmediatas..."
-                        className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-xs leading-relaxed"
+                        className={`w-full p-3.5 border rounded-xl outline-none text-xs leading-relaxed ${
+                          formErrors.description ? 'border-red-400 bg-red-50/20 focus:ring-2 focus:ring-red-400' : 'border-gray-200 focus:ring-2 focus:ring-emerald-500'
+                        }`}
                         value={formData.description}
-                        onChange={e => setFormData({ ...formData, description: e.target.value })}
+                        onChange={e => {
+                          clearError('description');
+                          setFormData({ ...formData, description: e.target.value });
+                        }}
                       />
+                      {formErrors.description && (
+                        <p className="text-[10px] text-red-600 font-bold">{formErrors.description}</p>
+                      )}
                     </div>
 
                     {/* Testigos */}
@@ -1280,30 +1505,54 @@ export default function EventForm({ onAdd, onUpdate, onClose, editRecord }: Prop
                         <input
                           type="text"
                           placeholder="Ej: Laura Martínez"
-                          className="w-full p-2.5 text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
+                          className={`w-full p-2.5 text-xs border rounded-xl outline-none ${
+                            formErrors.reportResponsibleName ? 'border-red-400 bg-red-50/20 focus:ring-2 focus:ring-red-400' : 'border-gray-200 focus:ring-2 focus:ring-emerald-500'
+                          }`}
                           value={formData.reportResponsibleName || ''}
-                          onChange={e => setFormData({ ...formData, reportResponsibleName: e.target.value })}
+                          onChange={e => {
+                            clearError('reportResponsibleName');
+                            setFormData({ ...formData, reportResponsibleName: e.target.value });
+                          }}
                         />
+                        {formErrors.reportResponsibleName && (
+                          <p className="text-[10px] text-red-600 font-bold">{formErrors.reportResponsibleName}</p>
+                        )}
                       </div>
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Cargo *</label>
                         <input
                           type="text"
                           placeholder="Ej: Coordinadora SST"
-                          className="w-full p-2.5 text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
+                          className={`w-full p-2.5 text-xs border rounded-xl outline-none ${
+                            formErrors.reportResponsiblePosition ? 'border-red-400 bg-red-50/20 focus:ring-2 focus:ring-red-400' : 'border-gray-200 focus:ring-2 focus:ring-emerald-500'
+                          }`}
                           value={formData.reportResponsiblePosition || ''}
-                          onChange={e => setFormData({ ...formData, reportResponsiblePosition: e.target.value })}
+                          onChange={e => {
+                            clearError('reportResponsiblePosition');
+                            setFormData({ ...formData, reportResponsiblePosition: e.target.value });
+                          }}
                         />
+                        {formErrors.reportResponsiblePosition && (
+                          <p className="text-[10px] text-red-600 font-bold">{formErrors.reportResponsiblePosition}</p>
+                        )}
                       </div>
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">No. Documento *</label>
                         <input
                           type="text"
                           placeholder="Ej: 52145896"
-                          className="w-full p-2.5 text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none font-mono"
+                          className={`w-full p-2.5 text-xs border rounded-xl outline-none font-mono ${
+                            formErrors.reportResponsibleIdNumber ? 'border-red-400 bg-red-50/20 focus:ring-2 focus:ring-red-400' : 'border-gray-200 focus:ring-2 focus:ring-emerald-500'
+                          }`}
                           value={formData.reportResponsibleIdNumber || ''}
-                          onChange={e => setFormData({ ...formData, reportResponsibleIdNumber: e.target.value })}
+                          onChange={e => {
+                            clearError('reportResponsibleIdNumber');
+                            setFormData({ ...formData, reportResponsibleIdNumber: e.target.value });
+                          }}
                         />
+                        {formErrors.reportResponsibleIdNumber && (
+                          <p className="text-[10px] text-red-600 font-bold">{formErrors.reportResponsibleIdNumber}</p>
+                        )}
                       </div>
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Fecha del Reporte</label>
@@ -1351,11 +1600,18 @@ export default function EventForm({ onAdd, onUpdate, onClose, editRecord }: Prop
                   <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Fecha del Incidente *</label>
                   <input
                     type="date"
-                    required
-                    className="w-full p-2.5 text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-bold"
+                    className={`w-full p-2.5 text-xs border rounded-xl outline-none font-bold ${
+                      formErrors.date ? 'border-red-400 bg-red-50/20 focus:ring-2 focus:ring-red-400' : 'border-gray-200 focus:ring-2 focus:ring-blue-500'
+                    }`}
                     value={formData.date}
-                    onChange={e => setFormData({ ...formData, date: e.target.value })}
+                    onChange={e => {
+                      clearError('date');
+                      setFormData({ ...formData, date: e.target.value });
+                    }}
                   />
+                  {formErrors.date && (
+                    <p className="text-[10px] text-red-600 font-bold">{formErrors.date}</p>
+                  )}
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Hora</label>
@@ -1370,12 +1626,19 @@ export default function EventForm({ onAdd, onUpdate, onClose, editRecord }: Prop
                   <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Área / Departamento *</label>
                   <input
                     type="text"
-                    required
                     placeholder="Ej: Mantenimiento, Bodega"
-                    className="w-full p-2.5 text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                    className={`w-full p-2.5 text-xs border rounded-xl outline-none ${
+                      formErrors.department ? 'border-red-400 bg-red-50/20 focus:ring-2 focus:ring-red-400' : 'border-gray-200 focus:ring-2 focus:ring-blue-500'
+                    }`}
                     value={formData.department}
-                    onChange={e => setFormData({ ...formData, department: e.target.value })}
+                    onChange={e => {
+                      clearError('department');
+                      setFormData({ ...formData, department: e.target.value });
+                    }}
                   />
+                  {formErrors.department && (
+                    <p className="text-[10px] text-red-600 font-bold">{formErrors.department}</p>
+                  )}
                 </div>
               </div>
 
@@ -1384,12 +1647,19 @@ export default function EventForm({ onAdd, onUpdate, onClose, editRecord }: Prop
                   <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Trabajador Involucrado o Reportante *</label>
                   <input
                     type="text"
-                    required
                     placeholder="Nombre completo"
-                    className="w-full p-2.5 text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                    className={`w-full p-2.5 text-xs border rounded-xl outline-none ${
+                      formErrors.employeeName ? 'border-red-400 bg-red-50/20 focus:ring-2 focus:ring-red-400' : 'border-gray-200 focus:ring-2 focus:ring-blue-500'
+                    }`}
                     value={formData.employeeName}
-                    onChange={e => setFormData({ ...formData, employeeName: e.target.value })}
+                    onChange={e => {
+                      clearError('employeeName');
+                      setFormData({ ...formData, employeeName: e.target.value });
+                    }}
                   />
+                  {formErrors.employeeName && (
+                    <p className="text-[10px] text-red-600 font-bold">{formErrors.employeeName}</p>
+                  )}
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Cargo</label>
@@ -1406,13 +1676,20 @@ export default function EventForm({ onAdd, onUpdate, onClose, editRecord }: Prop
               <div className="space-y-1">
                 <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Descripción del Incidente (Casi Accidente) *</label>
                 <textarea
-                  required
                   rows={4}
                   placeholder="Describa el incidente, condición insegura o situación de riesgo ocurrida sin generar lesión corporal..."
-                  className="w-full p-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs leading-relaxed"
+                  className={`w-full p-3.5 border rounded-xl outline-none text-xs leading-relaxed ${
+                    formErrors.description ? 'border-red-400 bg-red-50/20 focus:ring-2 focus:ring-red-400' : 'border-gray-200 focus:ring-2 focus:ring-blue-500'
+                  }`}
                   value={formData.description}
-                  onChange={e => setFormData({ ...formData, description: e.target.value })}
+                  onChange={e => {
+                    clearError('description');
+                    setFormData({ ...formData, description: e.target.value });
+                  }}
                 />
+                {formErrors.description && (
+                  <p className="text-[10px] text-red-600 font-bold">{formErrors.description}</p>
+                )}
               </div>
             </div>
           )}
@@ -1449,12 +1726,19 @@ export default function EventForm({ onAdd, onUpdate, onClose, editRecord }: Prop
                   <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Área / Departamento *</label>
                   <input
                     type="text"
-                    required
                     placeholder="Ej: Administrativa, Ventas"
-                    className="w-full p-2.5 text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none"
+                    className={`w-full p-2.5 text-xs border rounded-xl outline-none ${
+                      formErrors.department ? 'border-red-400 bg-red-50/20 focus:ring-2 focus:ring-red-400' : 'border-gray-200 focus:ring-2 focus:ring-amber-500'
+                    }`}
                     value={formData.department}
-                    onChange={e => setFormData({ ...formData, department: e.target.value })}
+                    onChange={e => {
+                      clearError('department');
+                      setFormData({ ...formData, department: e.target.value });
+                    }}
                   />
+                  {formErrors.department && (
+                    <p className="text-[10px] text-red-600 font-bold">{formErrors.department}</p>
+                  )}
                 </div>
               </div>
 
@@ -1463,12 +1747,19 @@ export default function EventForm({ onAdd, onUpdate, onClose, editRecord }: Prop
                   <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Nombre del Trabajador *</label>
                   <input
                     type="text"
-                    required
                     placeholder="Nombre completo"
-                    className="w-full p-2.5 text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none"
+                    className={`w-full p-2.5 text-xs border rounded-xl outline-none ${
+                      formErrors.employeeName ? 'border-red-400 bg-red-50/20 focus:ring-2 focus:ring-red-400' : 'border-gray-200 focus:ring-2 focus:ring-amber-500'
+                    }`}
                     value={formData.employeeName}
-                    onChange={e => setFormData({ ...formData, employeeName: e.target.value })}
+                    onChange={e => {
+                      clearError('employeeName');
+                      setFormData({ ...formData, employeeName: e.target.value });
+                    }}
                   />
+                  {formErrors.employeeName && (
+                    <p className="text-[10px] text-red-600 font-bold">{formErrors.employeeName}</p>
+                  )}
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Diagnóstico / Motivo de Ausentismo</label>
@@ -1495,21 +1786,35 @@ export default function EventForm({ onAdd, onUpdate, onClose, editRecord }: Prop
                     <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Fecha Inicio *</label>
                     <input
                       type="date"
-                      required
-                      className="w-full p-2.5 text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none font-bold"
+                      className={`w-full p-2.5 text-xs border rounded-xl outline-none font-bold ${
+                        formErrors.incapacityStartDate ? 'border-red-400 bg-red-50/20 focus:ring-2 focus:ring-red-400' : 'border-gray-200 focus:ring-2 focus:ring-amber-500'
+                      }`}
                       value={formData.incapacityStartDate || ''}
-                      onChange={e => setFormData({ ...formData, incapacityStartDate: e.target.value })}
+                      onChange={e => {
+                        clearError('incapacityStartDate');
+                        setFormData({ ...formData, incapacityStartDate: e.target.value });
+                      }}
                     />
+                    {formErrors.incapacityStartDate && (
+                      <p className="text-[10px] text-red-600 font-bold">{formErrors.incapacityStartDate}</p>
+                    )}
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Fecha Fin *</label>
                     <input
                       type="date"
-                      required
-                      className="w-full p-2.5 text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none font-bold"
+                      className={`w-full p-2.5 text-xs border rounded-xl outline-none font-bold ${
+                        formErrors.incapacityEndDate ? 'border-red-400 bg-red-50/20 focus:ring-2 focus:ring-red-400' : 'border-gray-200 focus:ring-2 focus:ring-amber-500'
+                      }`}
                       value={formData.incapacityEndDate || ''}
-                      onChange={e => setFormData({ ...formData, incapacityEndDate: e.target.value })}
+                      onChange={e => {
+                        clearError('incapacityEndDate');
+                        setFormData({ ...formData, incapacityEndDate: e.target.value });
+                      }}
                     />
+                    {formErrors.incapacityEndDate && (
+                      <p className="text-[10px] text-red-600 font-bold">{formErrors.incapacityEndDate}</p>
+                    )}
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Días Perdidos</label>
@@ -1526,19 +1831,30 @@ export default function EventForm({ onAdd, onUpdate, onClose, editRecord }: Prop
           <div className="pt-4 sticky bottom-0 bg-white pb-2 border-t border-gray-100 flex items-center justify-between gap-4">
             <button
               type="button"
+              disabled={isSubmitting}
               onClick={onClose}
-              className="px-5 py-3 rounded-2xl text-xs font-bold text-gray-500 hover:bg-gray-100 transition-colors"
+              className="px-5 py-3 rounded-2xl text-xs font-bold text-gray-500 hover:bg-gray-100 transition-colors disabled:opacity-50"
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className={`flex-1 text-white font-black py-3.5 rounded-2xl transition-all flex items-center justify-center gap-2 shadow-xl active:scale-[0.98] ${
+              disabled={isSubmitting}
+              className={`flex-1 text-white font-black py-3.5 rounded-2xl transition-all flex items-center justify-center gap-2 shadow-xl active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed ${
                 editRecord ? 'bg-blue-600 shadow-blue-200 hover:bg-blue-700' : 'bg-emerald-600 shadow-emerald-200 hover:bg-emerald-700'
               }`}
             >
-              {editRecord ? <Save size={18} /> : <Plus size={18} />}
-              {editRecord ? 'Guardar Cambios del Reporte' : 'Guardar y Registrar Evento'}
+              {isSubmitting ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" />
+                  <span>Guardando registro...</span>
+                </>
+              ) : (
+                <>
+                  {editRecord ? <Save size={18} /> : <Plus size={18} />}
+                  <span>{editRecord ? 'Guardar Cambios del Reporte' : 'Guardar y Registrar Evento'}</span>
+                </>
+              )}
             </button>
           </div>
         </form>

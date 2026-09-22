@@ -177,14 +177,21 @@ export default function App() {
   };
 
   const addRecord = async (record: Omit<EventRecord, 'id'>) => {
-    const cid = isAdmin ? selectedCompanyId : profile.companyId;
-    if (!cid) return;
+    const cid = isAdmin ? selectedCompanyId : profile?.companyId;
+    if (!cid) {
+      const msg = "No se ha seleccionado ninguna empresa para asociar este registro. Por favor seleccione una empresa primero.";
+      alert(msg);
+      throw new Error(msg);
+    }
     try {
       await firebaseService.addRecord({ ...record, companyId: cid });
       setShowEventForm(false);
       setEditingRecord(null);
     } catch (err) {
-      alert("Error al guardar el registro: " + (err instanceof Error ? err.message : "Error de permisos"));
+      console.error("Error al guardar registro:", err);
+      const msg = err instanceof Error ? err.message : "Error de permisos o conexión";
+      alert("Error al guardar el registro: " + msg);
+      throw err;
     }
   };
 
@@ -194,7 +201,10 @@ export default function App() {
       setShowEventForm(false);
       setEditingRecord(null);
     } catch (err) {
-      alert("Error al actualizar el registro: " + (err instanceof Error ? err.message : "Error de permisos"));
+      console.error("Error al actualizar registro:", err);
+      const msg = err instanceof Error ? err.message : "Error de permisos o conexión";
+      alert("Error al actualizar el registro: " + msg);
+      throw err;
     }
   };
 

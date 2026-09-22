@@ -14,6 +14,26 @@ import {
 import { db } from '../lib/firebase';
 import { Company, EventRecord, MonthlyIndicator, AccidentInvestigation } from '../types';
 
+/**
+ * Strips undefined properties recursively so Firestore does not reject writes.
+ */
+function cleanFirestoreData<T extends Record<string, any>>(obj: T): T {
+  const result: any = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value === undefined) continue;
+    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+      result[key] = cleanFirestoreData(value);
+    } else if (Array.isArray(value)) {
+      result[key] = value.map(item => 
+        (item !== null && typeof item === 'object') ? cleanFirestoreData(item) : item
+      );
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
 export const firebaseService = {
   // Companies
   async getCompanies() {
@@ -29,7 +49,7 @@ export const firebaseService = {
   },
 
   async addCompany(company: Omit<Company, 'id'>) {
-    return await addDoc(collection(db, 'companies'), company);
+    return await addDoc(collection(db, 'companies'), cleanFirestoreData(company));
   },
 
   // Investigations (Resolución 1401/2007)
@@ -47,11 +67,11 @@ export const firebaseService = {
   },
 
   async addInvestigation(investigation: Omit<AccidentInvestigation, 'id'>) {
-    return await addDoc(collection(db, 'investigations'), investigation);
+    return await addDoc(collection(db, 'investigations'), cleanFirestoreData(investigation));
   },
 
   async updateInvestigation(id: string, investigation: Partial<AccidentInvestigation>) {
-    return await updateDoc(doc(db, 'investigations', id), investigation);
+    return await updateDoc(doc(db, 'investigations', id), cleanFirestoreData(investigation));
   },
 
   async deleteInvestigation(id: string) {
@@ -73,11 +93,11 @@ export const firebaseService = {
   },
 
   async addRecord(record: Omit<EventRecord, 'id'>) {
-    return await addDoc(collection(db, 'records'), record);
+    return await addDoc(collection(db, 'records'), cleanFirestoreData(record));
   },
 
   async updateRecord(id: string, record: Partial<EventRecord>) {
-    return await updateDoc(doc(db, 'records', id), record);
+    return await updateDoc(doc(db, 'records', id), cleanFirestoreData(record));
   },
 
   async deleteRecord(id: string) {

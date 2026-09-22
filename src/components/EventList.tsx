@@ -1,17 +1,24 @@
 import React from 'react';
-import { EventRecord, EventType, AccidentType } from '../types';
-import { Calendar, User, MapPin, Clock, Trash2, ShieldAlert, AlertCircle, Activity, Edit2, GitFork } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { EventRecord, EventType, AccidentType, AccidentInvestigation } from '../types';
+import { Calendar, User, MapPin, Clock, Trash2, ShieldAlert, AlertCircle, Activity, Edit2, GitFork, Flame } from 'lucide-react';
+import { format, parseISO, differenceInCalendarDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 interface Props {
   records: EventRecord[];
+  investigations?: AccidentInvestigation[];
   onDelete: (id: string) => void;
   onEdit: (record: EventRecord) => void;
   onInvestigate?: (record: EventRecord) => void;
 }
 
-export default function EventList({ records, onDelete, onEdit, onInvestigate }: Props) {
+export default function EventList({ records, investigations = [], onDelete, onEdit, onInvestigate }: Props) {
+  const finalizedRecordIds = new Set(
+    investigations.filter(i => i.status === 'Finalizada').map(i => i.recordId)
+  );
+  const draftRecordIds = new Set(
+    investigations.filter(i => i.status === 'Borrador').map(i => i.recordId)
+  );
   if (records.length === 0) {
     return (
       <div className="bg-white rounded-3xl p-16 text-center border border-dashed border-gray-200">
@@ -39,11 +46,33 @@ export default function EventList({ records, onDelete, onEdit, onInvestigate }: 
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
-            {records.map((record) => (
-              <tr key={record.id} className="hover:bg-gray-50/50 transition-colors group">
+            {records.map((record) => {
+              const isAccident = record.eventType === EventType.ACCIDENTE;
+              let daysElapsed = 0;
+              if (isAccident) {
+                try {
+                  daysElapsed = differenceInCalendarDays(new Date(), parseISO(record.date));
+                } catch {
+                  daysElapsed = 0;
+                }
+              }
+              const isInvestigated = finalizedRecordIds.has(record.id);
+              const isOverdue = isAccident && !isInvestigated && daysElapsed > 15;
+              const isDraft = isAccident && draftRecordIds.has(record.id);
+
+              return (
+              <tr 
+                key={record.id} 
+                className={`transition-colors group ${
+                  isOverdue 
+                    ? 'bg-red-50/40 hover:bg-red-50/70 border-l-4 border-l-red-500' 
+                    : 'hover:bg-gray-50/50'
+                }`}
+              >
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-3">
                     <div className={`p-2 rounded-lg ${
+                      isOverdue ? 'bg-red-100 text-red-700' :
                       record.eventType === EventType.ACCIDENTE ? 'bg-emerald-50 text-emerald-600' :
                       record.eventType === EventType.INCIDENTE ? 'bg-blue-50 text-blue-600' :
                       'bg-amber-50 text-amber-600'
@@ -55,7 +84,14 @@ export default function EventList({ records, onDelete, onEdit, onInvestigate }: 
                     <div>
                       <span className="text-sm font-bold text-gray-900 block">{record.eventType}</span>
                       {record.eventType === EventType.ACCIDENTE && (
-                        <span className="text-[9px] font-black uppercase text-emerald-700">FURAT</span>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <span className="text-[9px] font-black uppercase text-emerald-700">FURAT</span>
+                          {isOverdue && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 bg-red-600 text-white rounded text-[8px] font-black uppercase animate-pulse">
+                              <Flame size={9} /> +15d Vencida
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -126,11 +162,21 @@ export default function EventList({ records, onDelete, onEdit, onInvestigate }: 
                     {record.eventType === EventType.ACCIDENTE && onInvestigate && (
                       <button
                         onClick={() => onInvestigate(record)}
-                        className="px-2.5 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-xl text-xs font-bold transition-all flex items-center gap-1"
-                        title="Investigar según Res. 1401/2007"
+                        className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
+                          isOverdue 
+                            ? 'bg-red-600 hover:bg-red-700 text-white font-black shadow-xs' 
+                            : isDraft
+                            ? 'bg-amber-100 hover:bg-amber-200 text-amber-900'
+                            : isInvestigated
+                            ? 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                            : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                        }`}
+                        title={isOverdue ? 'Investigación vencida: han transcurrido más de 15 días calendario (Res. 1401/2007)' : 'Investigar según Res. 1401/2007'}
                       >
                         <GitFork size={13} />
-                        <span className="hidden sm:inline">Investigar</span>
+                        <span className="hidden sm:inline">
+                          {isOverdue ? 'Investigar Ya (+15d)' : isDraft ? 'Completar' : isInvestigated ? 'Ver Inv.' : 'Investigar'}
+                        </span>
                       </button>
                     )}
                     <button
@@ -150,7 +196,8 @@ export default function EventList({ records, onDelete, onEdit, onInvestigate }: 
                   </div>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

@@ -28,7 +28,7 @@ import {
   FileCheck2,
   CheckCircle
 } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, differenceInCalendarDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { calculateIndicators, calculateYearlyIndicators } from './services/indicatorService';
 import { auth } from './lib/firebase';
@@ -256,11 +256,24 @@ export default function App() {
     ? (selectedCompanyId ? companies.find(c => c.id === selectedCompanyId) : null)
     : companies[0];
 
-  // Count pending investigations for accident records
+  // Count pending investigations and overdue (>15 calendar days) for accident records
+  const finalizedRecordIds = new Set(
+    investigations.filter(inv => inv.status === 'Finalizada').map(inv => inv.recordId)
+  );
   const investigatedRecordIds = new Set(investigations.map(inv => inv.recordId));
+  
   const pendingAccidentsCount = records.filter(
     r => r.eventType === EventType.ACCIDENTE && !investigatedRecordIds.has(r.id)
   ).length;
+
+  const overdueAccidentsCount = records.filter(r => {
+    if (r.eventType !== EventType.ACCIDENTE || finalizedRecordIds.has(r.id)) return false;
+    try {
+      return differenceInCalendarDays(new Date(), parseISO(r.date)) > 15;
+    } catch {
+      return false;
+    }
+  }).length;
 
   return (
     <div className="min-h-screen bg-[#F8F9FB] text-gray-900 font-sans">
@@ -313,11 +326,19 @@ export default function App() {
               >
                 <GitFork size={16} />
                 Investigaciones (Res. 1401)
-                {pendingAccidentsCount > 0 && (
+                {overdueAccidentsCount > 0 ? (
+                  <span 
+                    title={`${overdueAccidentsCount} investigaciones vencidas (+15 días)`}
+                    className="ml-1 px-1.5 py-0.5 bg-red-600 text-white rounded-full text-[9px] font-black animate-pulse flex items-center gap-0.5 shadow-xs"
+                  >
+                    <span>{overdueAccidentsCount}</span>
+                    <span className="text-[7px]">!</span>
+                  </span>
+                ) : pendingAccidentsCount > 0 ? (
                   <span className="ml-1 px-1.5 py-0.5 bg-amber-500 text-white rounded-full text-[9px] font-black animate-pulse">
                     {pendingAccidentsCount}
                   </span>
-                )}
+                ) : null}
               </button>
             </div>
 
@@ -539,17 +560,41 @@ export default function App() {
                 onUpdateEmployeeCount={(month, count) => {
                   updateMonthlyValue('employeeCount', month, count);
                 }}
+                company={currentCompany}
+                records={records}
+                investigations={investigations}
+                programmedDays={monthlyConfig.monthlyProgrammedDays[configMonth] || 0}
+                onNavigateToInvestigation={(record) => {
+                  if (record) {
+                    const existingInv = investigations.find(i => i.recordId === record.id);
+                    if (existingInv) {
+                      setSelectedInvestigation(existingInv);
+                    } else {
+                      setSelectedInvestigation(null);
+                    }
+                    setInvestigationTargetRecord(record);
+                    setShowInvestigationModal(true);
+                  } else {
+                    setActiveTab('investigations');
+                  }
+                }}
               />
             )}
 
             {activeTab === 'list' && (
               <EventList 
                 records={records} 
+                investigations={investigations}
                 onDelete={deleteRecord} 
                 onEdit={handleEditRecord}
                 onInvestigate={(record) => {
+                  const existingInv = investigations.find(i => i.recordId === record.id);
+                  if (existingInv) {
+                    setSelectedInvestigation(existingInv);
+                  } else {
+                    setSelectedInvestigation(null);
+                  }
                   setInvestigationTargetRecord(record);
-                  setSelectedInvestigation(null);
                   setShowInvestigationModal(true);
                 }}
               />

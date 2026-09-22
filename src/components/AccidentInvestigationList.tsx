@@ -21,8 +21,10 @@ import {
   ShieldAlert, 
   User, 
   Calendar,
-  ExternalLink
+  ExternalLink,
+  Flame
 } from 'lucide-react';
+import { differenceInCalendarDays, parseISO } from 'date-fns';
 import { generateInvestigationPdf } from '../services/pdfReportService';
 
 interface Props {
@@ -113,32 +115,61 @@ export default function AccidentInvestigationList({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
-            {pendingAccidents.map(acc => (
-              <div key={acc.id} className="p-3.5 bg-white border border-amber-200 rounded-2xl flex flex-col justify-between space-y-2 shadow-xs">
-                <div>
-                  <div className="flex items-center justify-between text-[10px] text-gray-400 font-bold mb-1">
-                    <span className="flex items-center gap-1"><Calendar size={11} /> {acc.date}</span>
-                    <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-black">
-                      {acc.lostDays} días inc.
-                    </span>
-                  </div>
-                  <h4 className="text-xs font-extrabold text-gray-900">{acc.employeeName}</h4>
-                  <p className="text-[10px] text-gray-500">{acc.position} • {acc.department}</p>
-                  <p className="text-[10px] text-gray-600 line-clamp-2 mt-1 italic">
-                    "{acc.description}"
-                  </p>
-                </div>
+            {pendingAccidents.map(acc => {
+              let daysElapsed = 0;
+              try {
+                daysElapsed = differenceInCalendarDays(new Date(), parseISO(acc.date));
+              } catch {
+                daysElapsed = 0;
+              }
+              const isOverdue = daysElapsed > 15;
 
-                <button
-                  type="button"
-                  onClick={() => onNewInvestigation(acc)}
-                  className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs"
+              return (
+                <div 
+                  key={acc.id} 
+                  className={`p-3.5 bg-white rounded-2xl flex flex-col justify-between space-y-2 shadow-xs border transition-all ${
+                    isOverdue 
+                      ? 'border-red-300 ring-1 ring-red-200 bg-red-50/20' 
+                      : 'border-amber-200'
+                  }`}
                 >
-                  <GitFork size={13} />
-                  Iniciar Investigación
-                </button>
-              </div>
-            ))}
+                  <div>
+                    <div className="flex items-center justify-between text-[10px] font-bold mb-1">
+                      <span className="flex items-center gap-1 text-gray-500">
+                        <Calendar size={11} /> {acc.date}
+                      </span>
+                      {isOverdue ? (
+                        <span className="bg-red-600 text-white px-2 py-0.5 rounded-full font-black flex items-center gap-1 animate-pulse">
+                          <Flame size={10} /> +{daysElapsed}d (Vencida)
+                        </span>
+                      ) : (
+                        <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-black">
+                          {daysElapsed}d / 15d plazo
+                        </span>
+                      )}
+                    </div>
+                    <h4 className="text-xs font-extrabold text-gray-900">{acc.employeeName}</h4>
+                    <p className="text-[10px] text-gray-500">{acc.position} • {acc.department}</p>
+                    <p className="text-[10px] text-gray-600 line-clamp-2 mt-1 italic">
+                      "{acc.description}"
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => onNewInvestigation(acc)}
+                    className={`w-full py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs text-white ${
+                      isOverdue 
+                        ? 'bg-red-600 hover:bg-red-700 font-black shadow-red-200' 
+                        : 'bg-emerald-600 hover:bg-emerald-700'
+                    }`}
+                  >
+                    <GitFork size={13} />
+                    {isOverdue ? 'Investigar Inmediatamente (Vencida)' : 'Iniciar Investigación'}
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

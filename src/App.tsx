@@ -241,43 +241,6 @@ export default function App() {
     }
   };
 
-  // Auto-sync investigations with linked accident records (dates, worker details, and recordId)
-  useEffect(() => {
-    if (!records.length || !investigations.length) return;
-    investigations.forEach(inv => {
-      // Find matching accident record by recordId or worker/date details
-      let match = records.find(r => r.id === inv.recordId);
-      if (!match) {
-        match = records.find(r => {
-          if (r.eventType !== EventType.ACCIDENTE) return false;
-          const found = findInvestigationForRecord(r, [inv]);
-          return Boolean(found);
-        });
-      }
-
-      if (match) {
-        const needsRecordIdSync = inv.recordId !== match.id;
-        const needsDateSync = match.date && inv.accidentDate !== match.date;
-        const needsNameSync = match.employeeName && inv.employeeName !== match.employeeName;
-        const needsDocSync = match.idNumber && inv.idNumber !== match.idNumber;
-
-        if (needsRecordIdSync || needsDateSync || needsNameSync || needsDocSync) {
-          firebaseService.updateInvestigation(inv.id, {
-            recordId: match.id,
-            accidentDate: match.date || inv.accidentDate,
-            accidentTime: match.time || inv.accidentTime || '',
-            employeeName: match.employeeName || inv.employeeName,
-            idNumber: match.idNumber || inv.idNumber,
-            position: match.position || inv.position,
-            department: match.department || inv.department
-          }).catch(err => {
-            console.warn("Aviso de sincronización de investigación:", err);
-          });
-        }
-      }
-    });
-  }, [records, investigations]);
-
   const handleEditRecord = (record: EventRecord) => {
     setEditingRecord(record);
     setShowEventForm(true);
@@ -339,7 +302,10 @@ export default function App() {
     // If completed/finalized/cerrada, it is never overdue
     if (inv && isInvestigationCompleted(inv.status)) return false;
     try {
-      return differenceInCalendarDays(new Date(), parseISO(r.date)) > 15;
+      if (!r.date) return false;
+      const p = parseISO(r.date);
+      if (isNaN(p.getTime())) return false;
+      return differenceInCalendarDays(new Date(), p) > 15;
     } catch {
       return false;
     }

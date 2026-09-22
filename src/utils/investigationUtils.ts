@@ -60,7 +60,11 @@ export function findInvestigationForRecord(
     try {
       if (!d1 || !d2) return false;
       if (d1 === d2) return true;
-      return Math.abs(differenceInCalendarDays(parseISO(d1), parseISO(d2))) <= 3;
+      const p1 = parseISO(d1);
+      const p2 = parseISO(d2);
+      if (isNaN(p1.getTime()) || isNaN(p2.getTime())) return false;
+      const diff = Math.abs(differenceInCalendarDays(p1, p2));
+      return !isNaN(diff) && diff <= 3;
     } catch {
       return false;
     }

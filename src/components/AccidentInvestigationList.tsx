@@ -163,7 +163,13 @@ export default function AccidentInvestigationList({
               const existingInv = findInvestigationForRecord(acc, investigations);
               let daysElapsed = 0;
               try {
-                daysElapsed = differenceInCalendarDays(new Date(), parseISO(acc.date));
+                if (acc.date) {
+                  const pDate = parseISO(acc.date);
+                  if (!isNaN(pDate.getTime())) {
+                    const diff = differenceInCalendarDays(new Date(), pDate);
+                    daysElapsed = isNaN(diff) ? 0 : Math.max(0, diff);
+                  }
+                }
               } catch {
                 daysElapsed = 0;
               }
@@ -311,15 +317,20 @@ export default function AccidentInvestigationList({
             let isOverdue = false;
             try {
               if (effectiveAccidentDate) {
-                if (isCompleted && inv.investigationDate) {
-                  daysElapsed = Math.max(0, differenceInCalendarDays(parseISO(inv.investigationDate), parseISO(effectiveAccidentDate)));
-                  isOverdue = daysElapsed > 15;
-                } else if (!isCompleted) {
-                  daysElapsed = Math.max(0, differenceInCalendarDays(new Date(), parseISO(effectiveAccidentDate)));
-                  isOverdue = daysElapsed > 15;
-                } else {
-                  daysElapsed = 0;
-                  isOverdue = false;
+                const accDate = parseISO(effectiveAccidentDate);
+                if (!isNaN(accDate.getTime())) {
+                  if (isCompleted && inv.investigationDate) {
+                    const invDate = parseISO(inv.investigationDate);
+                    if (!isNaN(invDate.getTime())) {
+                      const diff = differenceInCalendarDays(invDate, accDate);
+                      daysElapsed = isNaN(diff) ? 0 : Math.max(0, diff);
+                      isOverdue = daysElapsed > 15;
+                    }
+                  } else if (!isCompleted) {
+                    const diff = differenceInCalendarDays(new Date(), accDate);
+                    daysElapsed = isNaN(diff) ? 0 : Math.max(0, diff);
+                    isOverdue = daysElapsed > 15;
+                  }
                 }
               }
             } catch {}

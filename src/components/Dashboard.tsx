@@ -123,8 +123,13 @@ export default function Dashboard({
 
       let daysElapsed = 0;
       try {
-        const accidentDate = parseISO(rec.date);
-        daysElapsed = differenceInCalendarDays(now, accidentDate);
+        if (rec.date) {
+          const accidentDate = parseISO(rec.date);
+          if (!isNaN(accidentDate.getTime())) {
+            const diff = differenceInCalendarDays(now, accidentDate);
+            daysElapsed = isNaN(diff) ? 0 : Math.max(0, diff);
+          }
+        }
       } catch (e) {
         daysElapsed = 0;
       }

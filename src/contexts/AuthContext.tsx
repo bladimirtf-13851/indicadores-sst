@@ -26,6 +26,12 @@ const AuthContext = createContext<AuthContextType>({
   isAdmin: false,
 });
 
+const isMasterAdminEmail = (email?: string | null) => {
+  if (!email) return false;
+  const e = email.toLowerCase().trim();
+  return e === 'bladimirtf@gmail.com' || e === 'bladimir.torres@edu-flex.com';
+};
+
 export const useAuth = () => useContext(AuthContext);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -47,18 +53,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               setProfile({
                 id: firebaseUser.uid,
                 email: firebaseUser.email,
-                role: data.role,
+                role: data.role || (isMasterAdminEmail(firebaseUser.email) ? 'admin' : 'company'),
                 companyId: data.companyId,
-                name: data.name,
+                name: data.name || (isMasterAdminEmail(firebaseUser.email) ? 'Bladimir Torres (Admin)' : ''),
                 active: data.active !== false,
               });
             }
+          } else if (isMasterAdminEmail(firebaseUser.email)) {
+            // Master Admin Auto-Bootstrap Profile
+            setProfile({
+              id: firebaseUser.uid,
+              email: firebaseUser.email,
+              role: 'admin',
+              name: 'Bladimir Torres (Admin)',
+              active: true,
+            });
           } else {
             setProfile(null);
           }
         } catch (error) {
           console.error("Error fetching user profile:", error);
-          setProfile(null);
+          if (isMasterAdminEmail(firebaseUser.email)) {
+            setProfile({
+              id: firebaseUser.uid,
+              email: firebaseUser.email,
+              role: 'admin',
+              name: 'Bladimir Torres (Admin)',
+              active: true,
+            });
+          } else {
+            setProfile(null);
+          }
         }
       } else {
         setProfile(null);
@@ -73,7 +98,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user,
     profile,
     loading,
-    isAdmin: profile?.role === 'admin',
+    isAdmin: profile?.role === 'admin' || isMasterAdminEmail(user?.email),
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

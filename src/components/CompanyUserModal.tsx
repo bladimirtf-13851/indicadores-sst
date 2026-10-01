@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
-import { collection, query, where, getDocs, doc, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, setDoc, updateDoc, addDoc } from 'firebase/firestore';
 import { Company } from '../types';
 import { firebaseService } from '../services/firebaseService';
 import { db } from '../lib/firebase';
@@ -132,15 +132,28 @@ export default function CompanyUserModal({ company, onClose }: Props) {
               active: true,
               ...(name.trim() ? { name: name.trim() } : {})
             });
-            setTempCredentials({ email: cleanEmail, pass: '(Contraseña ya existente)' });
+            setTempCredentials({ email: cleanEmail, pass: '(Contraseña previamente configurada)' });
             await fetchUsers();
             setName('');
             setEmail('');
             setPassword('');
             return;
           } else {
-            // Document does not exist in 'users' collection yet
-            setError('El correo ya existe en la base de usuarios de autenticación. Por favor asigne otro correo o utilice las credenciales originales.');
+            // Document does not exist in 'users' collection yet - create the pending association!
+            await addDoc(collection(db, 'users'), {
+              email: cleanEmail,
+              companyId: company.id,
+              role: 'company',
+              name: name.trim() || cleanEmail.split('@')[0],
+              active: true,
+              createdAt: new Date().toISOString()
+            });
+            setTempCredentials({ email: cleanEmail, pass: '(Contraseña previamente configurada)' });
+            await fetchUsers();
+            setName('');
+            setEmail('');
+            setPassword('');
+            return;
           }
         } catch (profileErr: any) {
           setError(mapFirebaseAuthError(err));

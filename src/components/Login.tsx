@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, sendEmailVerification } from 'firebase/auth';
+import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import Logo from './Logo';
-import { Mail, Lock, LogIn, RefreshCw, AlertCircle, UserPlus, ArrowRight } from 'lucide-react';
+import { Mail, Lock, LogIn, RefreshCw, AlertCircle } from 'lucide-react';
 
 export default function Login() {
-  const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -16,59 +15,59 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
     setError('');
+
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPassword = password.trim();
+
     try {
-      if (isLogin) {
-        await signInWithEmailAndPassword(auth, email, password);
-      } else {
-        const { user } = await createUserWithEmailAndPassword(auth, email, password);
-        await sendEmailVerification(user);
-      }
+      await signInWithEmailAndPassword(auth, cleanEmail, cleanPassword);
     } catch (err: any) {
-      if (err.code === 'auth/email-already-in-use') {
-        setError('Este correo ya está registrado. Intente iniciar sesión.');
-      } else if (err.code === 'auth/weak-password') {
-        setError('La contraseña es muy débil (mínimo 6 caracteres).');
-      } else if (err.code === 'auth/operation-not-allowed') {
-        setError('El método de registro con correo no está habilitado en la consola de Firebase. Por favor actívalo en Authentication > Sign-in method.');
-      } else if (err.code === 'auth/invalid-email') {
+      console.error("Auth error:", err);
+      const code = err.code || '';
+      if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') {
+        setError('Correo o contraseña incorrectos. Verifica tus credenciales.');
+      } else if (code === 'auth/invalid-email') {
         setError('El formato del correo electrónico no es válido.');
-      } else if (err.code === 'auth/network-request-failed') {
-        setError('Error de Red: No se pudو conectar con Firebase. Revisa tu conexión a internet o intenta de nuevo en unos segundos.');
+      } else if (code === 'auth/user-disabled') {
+        setError('Esta cuenta ha sido deshabilitada por el administrador.');
+      } else if (code === 'auth/too-many-requests') {
+        setError('Demasiados intentos fallidos. Intenta nuevamente en unos minutos o recupera tu contraseña.');
+      } else if (code === 'auth/network-request-failed') {
+        setError('Error de Red: No se pudo conectar con el servidor. Revisa tu conexión a internet.');
       } else {
-        setError('Error: ' + (err.message || 'Error de conexión. Verifica que el método de correo/contraseña esté habilitado en Firebase.'));
+        setError('Error al iniciar sesión: ' + (err.message || 'Verifica tus credenciales e intenta de nuevo.'));
       }
-      console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
   const handleForgotPassword = async () => {
-    if (!email) {
-      setError('Por favor ingresa tu correo para recuperar la contraseña.');
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) {
+      setError('Por favor ingresa tu correo electrónico para recibir el enlace de recuperación.');
       return;
     }
     try {
-      await sendPasswordResetEmail(auth, email);
+      await sendPasswordResetEmail(auth, cleanEmail);
       setResetSent(true);
       setError('');
-    } catch (err) {
-      setError('Error al enviar el correo de recuperación.');
+    } catch (err: any) {
+      console.error(err);
+      setError('No se pudo enviar el correo de recuperación. Verifica que el correo esté registrado.');
     }
   };
 
   return (
     <div className="min-h-screen bg-[#F8F9FB] flex items-center justify-center p-6">
-      <div className="bg-white rounded-[40px] shadow-2xl p-10 w-full max-w-md border border-gray-100 flex flex-col items-center">
-        <Logo className="h-12 mb-8" />
+      <div className="bg-white rounded-[40px] shadow-2xl p-8 sm:p-10 w-full max-w-md border border-gray-100 flex flex-col items-center">
+        <Logo className="h-12 mb-6" />
         
         <h2 className="text-2xl font-extrabold text-gray-900 mb-2">
-          {isLogin ? 'Bienvenido' : 'Crear Cuenta'}
+          Bienvenido
         </h2>
-        <p className="text-gray-500 mb-8 text-center text-sm font-medium">
-          {isLogin 
-            ? 'Ingresa tus credenciales para acceder al sistema de gestión SST.' 
-            : 'Regístrate para comenzar a gestionar los indicadores de SST.'}
+        <p className="text-gray-500 mb-6 text-center text-xs font-medium">
+          Ingresa tus credenciales para acceder al sistema de gestión SST.
         </p>
 
         {error && (
@@ -83,11 +82,11 @@ export default function Login() {
             <div className="p-2 bg-emerald-100 rounded-full shrink-0">
               <Mail size={16} />
             </div>
-            <span className="text-xs font-bold leading-tight">Enlace de recuperación enviado a tu correo.</span>
+            <span className="text-xs font-bold leading-tight">Enlace de recuperación enviado. Revisa tu bandeja de entrada o spam.</span>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="w-full space-y-5">
+        <form onSubmit={handleSubmit} className="w-full space-y-4">
           <div className="space-y-1">
             <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 ml-1">Correo Electrónico</label>
             <div className="relative">
@@ -95,7 +94,7 @@ export default function Login() {
               <input
                 type="email"
                 required
-                className="w-full pl-12 pr-4 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all text-sm font-semibold"
+                className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all text-sm font-semibold"
                 placeholder="ejemplo@correo.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -110,7 +109,7 @@ export default function Login() {
               <input
                 type="password"
                 required
-                className="w-full pl-12 pr-4 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all text-sm font-semibold"
+                className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all text-sm font-semibold"
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -118,46 +117,31 @@ export default function Login() {
             </div>
           </div>
 
-          {isLogin && (
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={handleForgotPassword}
-                className="text-xs font-bold text-emerald-600 hover:text-emerald-700 transition-colors"
-              >
-                ¿Olvidaste tu contraseña?
-              </button>
-            </div>
-          )}
+          <div className="flex justify-end pt-1">
+            <button
+              type="button"
+              onClick={handleForgotPassword}
+              className="text-xs font-bold text-emerald-600 hover:text-emerald-700 transition-colors"
+            >
+              ¿Olvidaste tu contraseña?
+            </button>
+          </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-gray-900 hover:bg-black text-white font-bold py-4 rounded-2xl transition-all shadow-xl shadow-gray-900/10 active:scale-95 flex items-center justify-center gap-2 group disabled:opacity-50"
+            className="w-full bg-gray-900 hover:bg-black text-white font-bold py-4 rounded-2xl transition-all shadow-xl shadow-gray-900/10 active:scale-95 flex items-center justify-center gap-2 group disabled:opacity-50 mt-2 cursor-pointer"
           >
             {loading ? (
               <RefreshCw className="animate-spin" size={20} />
             ) : (
               <>
-                {isLogin ? 'Acceder' : 'Registrarse'}
-                {isLogin ? <LogIn className="group-hover:translate-x-1 transition-transform" size={20} /> : <UserPlus size={20} />}
+                <span>Acceder</span>
+                <LogIn className="group-hover:translate-x-1 transition-transform" size={18} />
               </>
             )}
           </button>
         </form>
-
-        <div className="mt-8 pt-8 border-t border-gray-100 w-full text-center">
-          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">
-            {isLogin ? '¿No tienes una cuenta?' : '¿Ya tienes una cuenta?'}
-          </p>
-          <button
-            onClick={() => setIsLogin(!isLogin)}
-            className="flex items-center justify-center gap-2 mx-auto text-emerald-600 font-bold text-sm hover:text-emerald-700 transition-colors"
-          >
-            {isLogin ? 'Crea una cuenta de administrador' : 'Inicia sesión con tu cuenta'}
-            <ArrowRight size={16} />
-          </button>
-        </div>
       </div>
     </div>
   );

@@ -40,11 +40,12 @@ import { auth } from './lib/firebase';
 import { signOut } from 'firebase/auth';
 
 export default function App() {
-  const { user, profile, loading, isAdmin } = useAuth();
+  const { user, profile, loading, isAdmin, refreshProfile } = useAuth();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'list' | 'investigations'>('dashboard');
   const [showEventForm, setShowEventForm] = useState(false);
   const [editingRecord, setEditingRecord] = useState<EventRecord | null>(null);
   const [showCompanyForm, setShowCompanyForm] = useState(false);
+  const [activatingProfile, setActivatingProfile] = useState(false);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(() => {
     return localStorage.getItem('sst_selected_company');
   });
@@ -82,9 +83,23 @@ export default function App() {
       if (isAdmin) {
         return firebaseService.listenCompanies(setCompanies);
       } else if (profile.companyId) {
+        setSelectedCompanyId(profile.companyId);
+        return firebaseService.listenCompany(profile.companyId, (comp) => {
+          if (comp) {
+            setCompanies([comp]);
+          }
+        });
+      } else {
+        // User without assigned companyId yet: load companies list
         firebaseService.getCompanies().then(list => {
-          const mine = list.find(c => c.id === profile.companyId);
-          if (mine) setCompanies([mine]);
+          setCompanies(list);
+          if (list.length === 1) {
+            const only = list[0];
+            setSelectedCompanyId(only.id);
+            firebaseService.updateUserProfile(user.uid, { companyId: only.id });
+          }
+        }).catch(err => {
+          console.warn("Could not load companies:", err);
         });
       }
     }
@@ -123,19 +138,65 @@ export default function App() {
     return <Login />;
   }
 
-  // Security barrier: if user exists but no profile, check pending status
+  // Security barrier: if user exists but no profile, allow instant activation
   if (!profile) {
+    const cleanEmail = user.email?.toLowerCase().trim() || '';
+    const isMaster = cleanEmail === 'bladimirtf@gmail.com' || cleanEmail === 'bladimir.torres@edu-flex.com';
+
+    const handleAutoActivate = async () => {
+      setActivatingProfile(true);
+      try {
+        await firebaseService.createUserProfile(
+          user.uid,
+          cleanEmail,
+          isMaster ? 'admin' : 'company',
+          undefined,
+          user.displayName || cleanEmail.split('@')[0] || 'Usuario',
+          true
+        );
+        if (refreshProfile) {
+          await refreshProfile();
+        } else {
+          window.location.reload();
+        }
+      } catch (err: any) {
+        alert("Error al activar perfil: " + (err.message || 'Error desconocido'));
+      } finally {
+        setActivatingProfile(false);
+      }
+    };
+
     return (
       <div className="min-h-screen bg-[#F8F9FB] flex items-center justify-center p-6">
-        <div className="bg-white p-10 rounded-[40px] shadow-2xl max-w-md w-full text-center space-y-6">
-          <ShieldAlert size={60} className="text-amber-500 mx-auto" />
-          <h2 className="text-2xl font-bold text-gray-900">Configuración Pendiente</h2>
-          <p className="text-gray-500 text-sm">Tu cuenta no tiene un perfil asignado o está pendiente de aprobación por el administrador.</p>
+        <div className="bg-white p-8 sm:p-10 rounded-[40px] shadow-2xl max-w-md w-full text-center space-y-6">
+          <div className="w-16 h-16 bg-emerald-50 rounded-3xl flex items-center justify-center mx-auto text-emerald-600">
+            <UserCheck size={36} />
+          </div>
+          <h2 className="text-2xl font-extrabold text-gray-900">Bienvenido al Sistema</h2>
+          <p className="text-gray-500 text-xs leading-relaxed">
+            Tu cuenta <span className="font-bold text-gray-700">{user.email}</span> ha sido autenticada exitosamente. Haz clic abajo para activar tu perfil y acceder al sistema.
+          </p>
+          
+          <button
+            onClick={handleAutoActivate}
+            disabled={activatingProfile}
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 shadow-xl shadow-emerald-600/20 active:scale-95 transition-all disabled:opacity-50 text-sm"
+          >
+            {activatingProfile ? (
+              <RefreshCw className="animate-spin" size={18} />
+            ) : (
+              <>
+                <UserCheck size={18} />
+                <span>Habilitar Acceso a la Plataforma</span>
+              </>
+            )}
+          </button>
+
           <button
             onClick={() => window.location.reload()}
-            className="w-full bg-white text-gray-900 border border-gray-200 font-bold py-3 rounded-2xl flex items-center justify-center gap-2 hover:bg-gray-50 transition-colors"
+            className="w-full bg-white text-gray-700 border border-gray-200 font-bold py-3 rounded-2xl flex items-center justify-center gap-2 hover:bg-gray-50 transition-colors text-xs"
           >
-            <RefreshCw size={18} />
+            <RefreshCw size={16} />
             Reintentar Carga
           </button>
           
@@ -145,26 +206,6 @@ export default function App() {
           >
             Cerrar Sesión
           </button>
-          
-          {(user?.email?.toLowerCase() === 'bladimirtf@gmail.com' || user?.email?.toLowerCase() === 'bladimir.torres@edu-flex.com') && (
-            <div className="pt-6 border-t border-gray-100 mt-4">
-              <p className="text-[10px] text-emerald-600 font-black uppercase mb-3 tracking-widest">Acceso de Administrador Maestro</p>
-              <button
-                onClick={async () => {
-                  try {
-                    await firebaseService.createUserProfile(user.uid, user.email!, 'admin');
-                    alert("¡Perfil de Administrador Global Activado!");
-                    window.location.reload();
-                  } catch (err) {
-                    alert("Error al crear perfil: " + (err instanceof Error ? err.message : "Error desconocido"));
-                  }
-                }}
-                className="w-full bg-emerald-600 text-white font-black py-4 rounded-3xl transition-all shadow-xl shadow-emerald-200 hover:bg-emerald-700 active:scale-[0.98]"
-              >
-                Activar Perfil Administrador Global
-              </button>
-            </div>
-          )}
         </div>
       </div>
     );
@@ -287,7 +328,7 @@ export default function App() {
 
   const currentCompany = isAdmin 
     ? (selectedCompanyId ? companies.find(c => c.id === selectedCompanyId) : null)
-    : companies[0];
+    : (companies.find(c => c.id === (profile?.companyId || selectedCompanyId)) || companies[0] || null);
 
   // Count pending investigations and overdue (>15 calendar days) for accident records
   const pendingAccidentsCount = records.filter(r => {
@@ -458,10 +499,11 @@ export default function App() {
                       e.stopPropagation();
                       setShowUserModal(company);
                     }}
-                    className="absolute bottom-6 right-6 p-2.5 bg-emerald-600 text-white rounded-xl shadow-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-emerald-700 flex items-center gap-2 text-xs font-bold"
+                    className="absolute bottom-5 right-5 px-3 py-2 bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-emerald-200 rounded-xl shadow-xs transition-all flex items-center gap-1.5 text-xs font-bold active:scale-95 cursor-pointer z-10"
+                    title={`Gestionar accesos y usuarios de ${company.name}`}
                   >
-                    <Users size={16} />
-                    Gestionar Usuario
+                    <Users size={15} />
+                    <span>Usuarios</span>
                   </button>
                 </div>
               ))}

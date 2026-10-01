@@ -42,6 +42,32 @@ export const firebaseService = {
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Company));
   },
 
+  async getCompany(companyId: string): Promise<Company | null> {
+    try {
+      const docRef = doc(db, 'companies', companyId);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        return { id: snap.id, ...snap.data() } as Company;
+      }
+      return null;
+    } catch (err) {
+      console.error("Error fetching single company:", err);
+      return null;
+    }
+  },
+
+  listenCompany(companyId: string, callback: (company: Company | null) => void) {
+    return onSnapshot(doc(db, 'companies', companyId), (docSnap) => {
+      if (docSnap.exists()) {
+        callback({ id: docSnap.id, ...docSnap.data() } as Company);
+      } else {
+        callback(null);
+      }
+    }, (err) => {
+      console.warn("listenCompany error:", err);
+    });
+  },
+
   listenCompanies(callback: (companies: Company[]) => void) {
     return onSnapshot(collection(db, 'companies'), (snapshot) => {
       callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Company)));
@@ -162,6 +188,22 @@ export const firebaseService = {
     const q = query(collection(db, 'users'), where('companyId', '==', companyId));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  },
+
+  async getUserProfileByEmail(email: string) {
+    try {
+      const cleanEmail = email.toLowerCase().trim();
+      const q = query(collection(db, 'users'), where('email', '==', cleanEmail));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        const docSnap = snap.docs[0];
+        return { id: docSnap.id, ...docSnap.data() };
+      }
+      return null;
+    } catch (err) {
+      console.error("Error finding user by email:", err);
+      return null;
+    }
   },
 
   async updateUserProfile(uid: string, data: any) {

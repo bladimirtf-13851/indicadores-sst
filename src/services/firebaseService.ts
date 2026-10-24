@@ -12,7 +12,7 @@ import {
   onSnapshot
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { Company, EventRecord, MonthlyIndicator, AccidentInvestigation } from '../types';
+import { Company, EventRecord, MonthlyIndicator, AccidentInvestigation, RoadAccidentReport } from '../types';
 
 /**
  * Strips undefined properties recursively so Firestore does not reject writes.
@@ -102,6 +102,34 @@ export const firebaseService = {
 
   async deleteInvestigation(id: string) {
     return await deleteDoc(doc(db, 'investigations', id));
+  },
+
+  // Siniestros Viales (PESV / IPAT)
+  async getRoadAccidents(companyId: string) {
+    const q = query(collection(db, 'road_accidents'), where('companyId', '==', companyId));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RoadAccidentReport));
+  },
+
+  listenRoadAccidents(companyId: string, callback: (accidents: RoadAccidentReport[]) => void) {
+    const q = query(collection(db, 'road_accidents'), where('companyId', '==', companyId));
+    return onSnapshot(q, (snapshot) => {
+      callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RoadAccidentReport)));
+    }, (err) => {
+      console.warn("listenRoadAccidents error:", err);
+    });
+  },
+
+  async addRoadAccident(accident: Omit<RoadAccidentReport, 'id'>) {
+    return await addDoc(collection(db, 'road_accidents'), cleanFirestoreData(accident));
+  },
+
+  async updateRoadAccident(id: string, accident: Partial<RoadAccidentReport>) {
+    return await updateDoc(doc(db, 'road_accidents', id), cleanFirestoreData(accident));
+  },
+
+  async deleteRoadAccident(id: string) {
+    return await deleteDoc(doc(db, 'road_accidents', id));
   },
 
   // Records

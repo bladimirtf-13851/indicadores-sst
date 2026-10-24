@@ -309,3 +309,209 @@ export interface AppState {
   companyData: Record<string, CompanyData>;
   selectedCompanyId: string | null;
 }
+
+// -------------------------------------------------------------
+// Tipos para el Módulo de Reporte de Siniestros Viales (PESV / IPAT)
+// -------------------------------------------------------------
+
+export interface RoadAccidentDriver {
+  id: string;
+  fullName: string;
+  idType: 'CC' | 'CE' | 'PA' | 'TI' | 'PEP' | 'PPT';
+  idNumber: string;
+  licenseNumber: string;
+  licenseCategory: 'A1' | 'A2' | 'B1' | 'B2' | 'B3' | 'C1' | 'C2' | 'C3';
+  licenseExpiry: string;
+  phone: string;
+  address: string;
+  email?: string;
+  vehiclePlate?: string; // Placa del vehículo que conducía
+  alcoholTestResult?: 'Negativo' | 'Positivo' | 'No realizado' | 'Pendiente';
+}
+
+export interface RoadAccidentPerson {
+  id: string;
+  role: 'Pasajero' | 'Peatón' | 'Ciclista' | 'Acompañante';
+  fullName: string;
+  idType: string;
+  idNumber: string;
+  phone: string;
+  address: string;
+  vehiclePlate?: string;
+}
+
+export interface RoadAccidentWitness {
+  id: string;
+  fullName: string;
+  idNumber: string;
+  phone: string;
+  address?: string;
+  statement: string;
+}
+
+export interface RoadAccidentAuthority {
+  attendedByAuthority: boolean;
+  entity: 'Policía de Tránsito' | 'Agente de Tránsito Municipal' | 'Policía de Carreteras (DITRA)' | 'Inspector Vial' | 'Otro';
+  officerName: string;
+  badgeNumber: string;
+  unitOrStation?: string;
+  ipatReportNumber?: string;
+  observations?: string;
+}
+
+export type ImpactZone =
+  | 'Frontal'
+  | 'Frontal Izquierdo'
+  | 'Frontal Derecho'
+  | 'Lateral Izquierdo'
+  | 'Lateral Derecho'
+  | 'Posterior'
+  | 'Posterior Izquierdo'
+  | 'Posterior Derecho'
+  | 'Techo / Volcamiento'
+  | 'Parte Inferior';
+
+export interface RoadAccidentVehicle {
+  id: string;
+  plate: string;
+  vehicleType: 'Automóvil' | 'Camioneta' | 'Camión' | 'Tractocamión' | 'Motocicleta' | 'Bus / Microbús' | 'Bicicleta' | 'Maquinaria' | 'Otro';
+  brand: string;
+  modelLine: string;
+  color: string;
+  year: string;
+  serviceType: 'Particular' | 'Público' | 'Oficial' | 'Carga / Empresa' | 'Especial';
+  // Documentación legal
+  soatNumber: string;
+  soatExpiry: string;
+  insuranceCompany: string;
+  allRiskPolicyNumber: string;
+  rtmNumber: string;
+  rtmExpiry: string;
+  // Propietario
+  ownerSameAsDriver: boolean;
+  ownershipType: 'Conductor es el dueño' | 'Tercero Particular' | 'Empresa / Flota Propia' | 'Arrendamiento / Leasing';
+  ownerName: string;
+  ownerIdNumber: string;
+  ownerPhone: string;
+  // Daños y Puntos de impacto (Sección 4 vinculada por vehículo)
+  visibleDamages: string;
+  detachedParts: string;
+  damageSeverity: 'Sin Daños' | 'Leve' | 'Moderado' | 'Grave' | 'Pérdida Total';
+  immobilized: boolean;
+  impactZones: ImpactZone[];
+  firstContactPoint: string;
+}
+
+export interface RoadAccidentInjury {
+  id: string;
+  personName: string;
+  idNumber: string;
+  role: 'Conductor' | 'Pasajero' | 'Peatón' | 'Ciclista';
+  severity: 'Leve' | 'Moderada' | 'Grave' | 'Fallecido';
+  injuryDescription: string;
+  bodyPartsAffected: string;
+  transferredToMedicalCenter: boolean;
+  medicalCenterName: string;
+  ambulanceOrTransport?: string;
+}
+
+export interface RoadAccidentMedia {
+  id: string;
+  category:
+    | 'Panorámica de la escena'
+    | 'Daños de cerca'
+    | 'Estado de las llantas'
+    | 'Señales de tránsito'
+    | 'Posición final de vehículos'
+    | 'Video / Evidencia adicional';
+  title: string;
+  description: string;
+  mediaType: 'image' | 'video';
+  dataUrl: string; // base64 image or video URL
+  capturedAt?: string;
+}
+
+export interface RoadAccidentDriverSignature {
+  driverId: string;
+  driverName: string;
+  idNumber: string;
+  vehiclePlate: string;
+  ableToSign: boolean;
+  unableReason?: string;
+  signatureDataUrl?: string;
+  signedAt?: string;
+}
+
+export interface RoadAccidentReport {
+  id: string;
+  companyId: string;
+  code?: string; // Consecutivo ej. SV-2026-001
+  linkedRecordId?: string; // Opcional: vínculo con FURAT
+
+  // 1. Datos Básicos del Hecho (Fecha y Ubicación)
+  accidentDate: string;
+  accidentTime: string;
+  address: string;
+  municipality: string;
+  department: string;
+  zone: 'Urbana' | 'Rural' | 'Tramo Vial Nacional' | 'Instalaciones Internas';
+  gpsCoordinates: string; // Lat, Lng
+  intersections: string;
+  roadDirection: 'Unidireccional' | 'Bidireccional' | 'Doble Calzada' | 'Glorieta / Intersección';
+  referencePoints: string;
+  // Estado de la vía y del entorno
+  weatherCondition: 'Despejado / Seco' | 'Lluvia leve' | 'Lluvia fuerte / Tormenta' | 'Niebla / Neblina' | 'Granizo' | 'Vientos fuertes';
+  lightingCondition: 'Luz día natural' | 'Nocturna con buena iluminación' | 'Nocturna con iluminación deficiente' | 'Nocturna sin iluminación' | 'Amanecer / Atardecer';
+  roadSurfaceCondition: 'Seco y en buen estado' | 'Pavimento mojado / Húmedo' | 'Con huecos o baches' | 'Material suelto / Gravilla' | 'Derrame de aceite / Sustancias' | 'Vía en obras / Construcción' | 'Destapada / Trocha';
+  trafficSignalsPresent: string[]; // ['Señales verticales', 'Demarcación horizontal', 'Semáforo operativo', 'Semáforo fuera de servicio', 'Reductores de velocidad', 'Sin señalización visible']
+  roadGeometry: 'Recta plana' | 'Recta con pendiente' | 'Curva plana' | 'Curva con pendiente' | 'Intersección' | 'Puente / Viaducto';
+  environmentNotes: string;
+
+  // 2. Identificación de las Personas Involucradas
+  drivers: RoadAccidentDriver[];
+  passengersAndPedestrians: RoadAccidentPerson[];
+  witnesses: RoadAccidentWitness[];
+  authority: RoadAccidentAuthority;
+
+  // 3. Información de los Vehículos Involucrados (incluye daños y puntos de impacto por vehículo)
+  vehicles: RoadAccidentVehicle[];
+
+  // 4. Descripción de Daños y Lesiones (Resumen general + Lesiones personales)
+  collisionType: 'Choque con otro vehículo' | 'Atropello a peatón' | 'Volcamiento' | 'Choque con objeto fijo' | 'Caída de ocupante' | 'Incendio / Otro';
+  otherPropertyDamages: string; // Daños a infraestructura, postes, señales, terceros
+  hasInjuriesOrFatalities: boolean;
+  injuries: RoadAccidentInjury[];
+
+  // 5. Narración, Croquis y Evidencia Fotográfica
+  chronologicalNarrative: string;
+  estimatedSpeedKmH: string;
+  priorManeuvers: string;
+  preliminaryCauses: string;
+  sketchDataUrl: string; // Croquis topográfico (canvas PNG base64)
+  sketchNotes: string;
+  mediaEvidences: RoadAccidentMedia[];
+
+  // 6. Firmas y Validaciones
+  driverSignatures: RoadAccidentDriverSignature[];
+  authoritySignature: {
+    officerName: string;
+    badgeNumber: string;
+    entity: string;
+    signatureDataUrl?: string;
+    signedAt?: string;
+    validationNotes?: string;
+  };
+  sstVerifierSignature?: {
+    name: string;
+    idNumber: string;
+    position: string;
+    signatureDataUrl?: string;
+    signedAt?: string;
+  };
+
+  status: 'Borrador' | 'En Proceso' | 'Firmado y Validado' | 'Cerrado';
+  severity: 'Solo Daños Materiales' | 'Con Lesionados' | 'Con Fallecidos';
+  createdAt: string;
+  updatedAt: string;
+}
+

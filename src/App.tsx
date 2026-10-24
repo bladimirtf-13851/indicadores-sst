@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from './contexts/AuthContext';
-import { Company, EventRecord, MonthlyIndicator, YearlyIndicator, AccidentInvestigation, EventType } from './types';
+import { Company, EventRecord, MonthlyIndicator, YearlyIndicator, AccidentInvestigation, EventType, RoadAccidentReport } from './types';
 import { firebaseService } from './services/firebaseService';
 import Dashboard from './components/Dashboard';
 import EventForm from './components/EventForm';
@@ -10,6 +10,8 @@ import CompanyForm from './components/CompanyForm';
 import CompanyUserModal from './components/CompanyUserModal';
 import AccidentInvestigationList from './components/AccidentInvestigationList';
 import AccidentInvestigationModal from './components/AccidentInvestigationModal';
+import RoadAccidentList from './components/RoadAccidentList';
+import RoadAccidentModal from './components/RoadAccidentModal';
 import Login from './components/Login';
 import Logo from './components/Logo';
 import { 
@@ -26,7 +28,8 @@ import {
   CalendarRange, 
   GitFork,
   FileCheck2,
-  CheckCircle
+  CheckCircle,
+  Car
 } from 'lucide-react';
 import { format, parseISO, differenceInCalendarDays } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -41,7 +44,7 @@ import { signOut } from 'firebase/auth';
 
 export default function App() {
   const { user, profile, loading, isAdmin, refreshProfile } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'list' | 'investigations'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'list' | 'investigations' | 'road_accidents'>('dashboard');
   const [showEventForm, setShowEventForm] = useState(false);
   const [editingRecord, setEditingRecord] = useState<EventRecord | null>(null);
   const [showCompanyForm, setShowCompanyForm] = useState(false);
@@ -56,6 +59,11 @@ export default function App() {
   const [showInvestigationModal, setShowInvestigationModal] = useState(false);
   const [selectedInvestigation, setSelectedInvestigation] = useState<AccidentInvestigation | null>(null);
   const [investigationTargetRecord, setInvestigationTargetRecord] = useState<EventRecord | null>(null);
+
+  // Road Accidents (Siniestros Viales) states
+  const [roadAccidents, setRoadAccidents] = useState<RoadAccidentReport[]>([]);
+  const [showRoadAccidentModal, setShowRoadAccidentModal] = useState(false);
+  const [selectedRoadAccident, setSelectedRoadAccident] = useState<RoadAccidentReport | null>(null);
 
   // Persist local UI state
   useEffect(() => {
@@ -105,7 +113,7 @@ export default function App() {
     }
   }, [user, profile, isAdmin]);
 
-  // Record, Config & Investigation listeners based on company selection
+  // Record, Config, Investigation & Road Accident listeners based on company selection
   useEffect(() => {
     const companyIdToTrack = isAdmin ? selectedCompanyId : profile?.companyId;
     
@@ -113,15 +121,18 @@ export default function App() {
       const unsubRecords = firebaseService.listenRecords(companyIdToTrack, setRecords);
       const unsubConfigs = firebaseService.listenConfigs(companyIdToTrack, setMonthlyConfig);
       const unsubInvestigations = firebaseService.listenInvestigations(companyIdToTrack, setInvestigations);
+      const unsubRoadAccidents = firebaseService.listenRoadAccidents(companyIdToTrack, setRoadAccidents);
       return () => {
         unsubRecords();
         unsubConfigs();
         unsubInvestigations();
+        unsubRoadAccidents();
       };
     } else {
       setRecords([]);
       setMonthlyConfig({ monthlyEmployeeCount: {}, monthlyProgrammedDays: {} });
       setInvestigations([]);
+      setRoadAccidents([]);
     }
   }, [selectedCompanyId, profile, isAdmin]);
 
@@ -379,7 +390,7 @@ export default function App() {
             <div className="hidden md:flex items-center gap-1 bg-gray-100/50 p-1.5 rounded-2xl border border-gray-100">
               <button
                 onClick={() => setActiveTab('dashboard')}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
                   activeTab === 'dashboard' ? 'bg-white text-emerald-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
@@ -388,7 +399,7 @@ export default function App() {
               </button>
               <button
                 onClick={() => setActiveTab('list')}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
                   activeTab === 'list' ? 'bg-white text-emerald-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
@@ -397,7 +408,7 @@ export default function App() {
               </button>
               <button
                 onClick={() => setActiveTab('investigations')}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all relative ${
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all relative whitespace-nowrap shrink-0 ${
                   activeTab === 'investigations' ? 'bg-white text-emerald-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
@@ -406,16 +417,30 @@ export default function App() {
                 {overdueAccidentsCount > 0 ? (
                   <span 
                     title={`${overdueAccidentsCount} investigaciones vencidas (+15 días)`}
-                    className="ml-1 px-1.5 py-0.5 bg-red-600 text-white rounded-full text-[9px] font-black animate-pulse flex items-center gap-0.5 shadow-xs"
+                    className="ml-1 px-1.5 py-0.5 bg-red-600 text-white rounded-full text-[9px] font-black flex items-center gap-0.5 shadow-xs"
                   >
                     <span>{overdueAccidentsCount}</span>
                     <span className="text-[7px]">!</span>
                   </span>
                 ) : pendingAccidentsCount > 0 ? (
-                  <span className="ml-1 px-1.5 py-0.5 bg-amber-500 text-white rounded-full text-[9px] font-black animate-pulse">
+                  <span className="ml-1 px-1.5 py-0.5 bg-amber-500 text-white rounded-full text-[9px] font-black">
                     {pendingAccidentsCount}
                   </span>
                 ) : null}
+              </button>
+              <button
+                onClick={() => setActiveTab('road_accidents')}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
+                  activeTab === 'road_accidents' ? 'bg-white text-emerald-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <Car size={16} />
+                Siniestros Viales (PESV)
+                {roadAccidents.length > 0 && (
+                  <span className="ml-1 text-[10px] font-mono text-gray-400">
+                    ({roadAccidents.length})
+                  </span>
+                )}
               </button>
             </div>
 
@@ -518,14 +543,60 @@ export default function App() {
           </>
         ) : (
           <>
+            {/* Mobile Tab Navigation */}
+            <div className="flex md:hidden items-center gap-1.5 overflow-x-auto pb-4 mb-4">
+              <button
+                onClick={() => setActiveTab('dashboard')}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 ${
+                  activeTab === 'dashboard' ? 'bg-emerald-600 text-white' : 'bg-white text-gray-600 border border-gray-200'
+                }`}
+              >
+                <LayoutDashboard size={14} />
+                Indicadores KPI
+              </button>
+              <button
+                onClick={() => setActiveTab('list')}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 ${
+                  activeTab === 'list' ? 'bg-emerald-600 text-white' : 'bg-white text-gray-600 border border-gray-200'
+                }`}
+              >
+                <List size={14} />
+                Eventos (FURAT)
+              </button>
+              <button
+                onClick={() => setActiveTab('investigations')}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 ${
+                  activeTab === 'investigations' ? 'bg-emerald-600 text-white' : 'bg-white text-gray-600 border border-gray-200'
+                }`}
+              >
+                <GitFork size={14} />
+                Investigaciones
+              </button>
+              <button
+                onClick={() => setActiveTab('road_accidents')}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 ${
+                  activeTab === 'road_accidents' ? 'bg-emerald-600 text-white' : 'bg-white text-gray-600 border border-gray-200'
+                }`}
+              >
+                <Car size={14} />
+                Siniestros Viales
+              </button>
+            </div>
+
             {/* Top Bar / Configuration */}
             <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-10">
               <div>
                 <h2 className="text-3xl font-extrabold text-gray-900 tracking-tight">
-                  {activeTab === 'dashboard' ? 'Panel de Indicadores KPI' : activeTab === 'list' ? 'Registro de Eventos (FURAT)' : 'Investigaciones de Accidentes'}
+                  {activeTab === 'dashboard'
+                    ? 'Panel de Indicadores KPI'
+                    : activeTab === 'list'
+                    ? 'Registro de Eventos (FURAT)'
+                    : activeTab === 'investigations'
+                    ? 'Investigaciones de Accidentes'
+                    : 'Reporte de Siniestros Viales (PESV / IPAT)'}
                 </h2>
                 <p className="text-gray-400 font-medium mt-1">
-                  {currentCompany?.name} • Cumplimiento Resolución 0312/2019 & Resolución 1401/2007.
+                  {currentCompany?.name} • Cumplimiento Resolución 0312/2019, Resolución 1401/2007 y Plan Estratégico de Seguridad Vial.
                 </p>
               </div>
 
@@ -701,6 +772,26 @@ export default function App() {
                 }}
               />
             )}
+
+            {activeTab === 'road_accidents' && (
+              <RoadAccidentList
+                company={currentCompany || null}
+                reports={roadAccidents}
+                onNewReport={() => {
+                  setSelectedRoadAccident(null);
+                  setShowRoadAccidentModal(true);
+                }}
+                onEditReport={(rep) => {
+                  setSelectedRoadAccident(rep);
+                  setShowRoadAccidentModal(true);
+                }}
+                onDeleteReport={async (id) => {
+                  if (confirm("¿Está seguro de eliminar este reporte de siniestro vial de forma permanente?")) {
+                    await firebaseService.deleteRoadAccident(id);
+                  }
+                }}
+              />
+            )}
           </>
         )}
       </main>
@@ -769,6 +860,32 @@ export default function App() {
             setShowInvestigationModal(false);
             setSelectedInvestigation(null);
             setInvestigationTargetRecord(null);
+          }}
+        />
+      )}
+
+      {showRoadAccidentModal && (
+        <RoadAccidentModal
+          company={currentCompany || null}
+          existingReport={selectedRoadAccident}
+          onSave={async (reportData, existingId) => {
+            const cid = isAdmin ? selectedCompanyId : profile?.companyId;
+            if (!cid) return;
+            try {
+              if (existingId) {
+                await firebaseService.updateRoadAccident(existingId, reportData);
+              } else {
+                await firebaseService.addRoadAccident({ ...reportData, companyId: cid });
+              }
+              setShowRoadAccidentModal(false);
+              setSelectedRoadAccident(null);
+            } catch (err: any) {
+              alert("Error al guardar el reporte de siniestro vial: " + (err?.message || "Error desconocido"));
+            }
+          }}
+          onClose={() => {
+            setShowRoadAccidentModal(false);
+            setSelectedRoadAccident(null);
           }}
         />
       )}

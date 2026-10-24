@@ -65,6 +65,20 @@
         "severity": { "type": "string", "enum": ["Leve", "Grave", "Mortal"] }
       },
       "required": ["companyId", "recordId", "employeeName"]
+    },
+    "RoadAccident": {
+      "title": "RoadAccident",
+      "description": "Road safety accident report (Reporte de Siniestro Vial - PESV / IPAT)",
+      "type": "object",
+      "properties": {
+        "companyId": { "type": "string" },
+        "accidentDate": { "type": "string" },
+        "accidentTime": { "type": "string" },
+        "address": { "type": "string" },
+        "severity": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["companyId", "accidentDate", "address"]
     }
   },
   "firestore": {
@@ -83,6 +97,10 @@
     "investigations/{investigationId}": {
       "schema": "Investigation",
       "description": "Accident investigations per Resolution 1401/2007"
+    },
+    "road_accidents/{accidentId}": {
+      "schema": "RoadAccident",
+      "description": "Road traffic accident reports (Siniestros Viales)"
     },
     "configs/{configId}": {
       "schema": "MonthlyConfig",
